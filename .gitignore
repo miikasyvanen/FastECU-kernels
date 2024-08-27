@@ -1,0 +1,9 @@
+*.bin
+*.elf
+*.hex
+*.map
+*.lst
+*.o
+*.su
+!precompiled/*.bin
+build/
