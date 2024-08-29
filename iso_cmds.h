@@ -20,8 +20,17 @@
  */
 
 
+#define SID_CAN_START_COMM  0x7A
+#define SID_CAN_RECUID      0xA0    // Read ECU ID, in this case kernel ID
+#define SID_CAN_DUMP_EEPROM 0xB8	// Format : 0xBD <AS> <BH BL> <AH AL>  ; AS=0 for EEPROM, =1 for ROM
+#define SID_CAN_CKS         0xD0    // Request CRC32 of the ROM (starting at <ADDR:SIZE>)
+                                    // <SID_CAN_CKS> <ADDR 4bytes> <SIZE 3bytes>
+#define SID_CAN_DUMP        0xD8    // Format : 0xBD <AS> <BH BL> <AH AL>  ; AS=0 for EEPROM, =1 for ROM
+#define SID_CAN_FLASH_INIT  0xE0    // Init flash prior write
+#define SID_CAN_FLASH_ERASE 0xF0    // Erase flash block
+#define SID_CAN_FLASH_WRITE 0xF8    // Write 128bytes flash
+
 #define SID_RECUID	0x1A	/* read ECU ID, in this case kernel ID */
-#define SID_CAN_RECUID	0xA0	/* read ECU ID, in this case kernel ID */
 #define SID_RECUID_PRC	"\x5A"	/* positive response code, to be concatenated to version string */
 
 #define SID_RMBA 0x23	/* ReadMemByAddress. format : <SID_RMBA> <AH> <AM> <AL> <SIZ>  , siz <= 251. */
@@ -37,9 +46,6 @@
 	#define SID_DUMP_ROM 1
 	#define SID_DUMP_SUB_EEPROM 2
 
-#define SID_CAN_DUMP_EEPROM 0xB8	/* format : 0xBD <AS> <BH BL> <AH AL>  ; AS=0 for EEPROM, =1 for ROM */
-#define SID_CAN_DUMP 0xD8	/* format : 0xBD <AS> <BH BL> <AH AL>  ; AS=0 for EEPROM, =1 for ROM */
-
 /* SID_FLASH and subcommands */
 #define SID_FLASH 0xBC	/* low-level reflash commands; only available after successful RequestDownload */
 	#define SIDFL_UNPROTECT 0x55	//enable erase / write. format : <SID_FLASH> <SIDFL_UNPROTECT> <~SIDFL_UNPROTECT>
@@ -53,9 +59,9 @@
 	#define SID_CONF_SETSPEED 0x01	/* set comm speed (BRR divisor reg) : <SID_CONF> <SID_CONF_SETSPEED> <new divisor> */
 			//this requires a new StartComm request at the new speed
 	#define SID_CONF_SETEEPR 0x02	/* set eeprom_read() function address <SID_CONF> <SID_CONF_SETEEPR> <AH> <AM> <AL> */
-	#define SID_CONF_CKS1	0x03	//verify if 4*<CRCH:CRCL> hash is valid for 4*256B chunks of the ROM (starting at <CNH:CNL> * 1024)
-								//<SID_CONF> <SID_CONF_CKS1> <CNH> <CNL> <CRC0H> <CRC0L> ...<CRC3H> <CRC3L>
-		#define ROMCRC_NUMCHUNKS 4
+    #define SID_CONF_CKS	0x03	// Request CRC32 of the ROM (starting at <ADDR:SIZE>)
+                                    //<SID_CONF> <SID_CONF_CKS> <ADDR 4bytes> <SIZE 3bytes>
+        #define ROMCRC_NUMCHUNKS 4
 		#define ROMCRC_CHUNKSIZE 256
 	#define SID_CONF_R16 0x04		/* for debugging : do a 16bit access read at given adress in RAM (top byte 0xFF)
 									* <SID_CONF> <SID_CONF_R16> <A2> <A1> <A0> */

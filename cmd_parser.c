@@ -35,7 +35,9 @@
 /* concatenate the ReadECUID positive response byte
  * in front of the version string
  */
-#if defined(SH7058D_EURO4)
+#if defined(SH7059D_EURO5)
+static const u8 npk_ver_string[] = "FastECU Subaru SH7059 CAN EURO5 Diesel Kernel v1.00";
+#elif defined(SH7058D_EURO4)
 static const u8 npk_ver_string[] = "FastECU Subaru SH7058 CAN EURO4 Diesel Kernel v1.00";
 #elif defined(SH7058)
 static const u8 npk_ver_string[] = "FastECU Subaru SH7058 CAN Kernel v1.00";
@@ -340,7 +342,7 @@ void clear_sci3_cs(void) {
 
 bool __attribute__ ((noinline)) EEPROM_check(void) {
 
-	bool pbpin;
+    bool pbpin = false;
 
 	if (EEPROM_SCI == EEPSCI4_PF10) {
 		//Toggle PF10 & short delay
@@ -515,36 +517,7 @@ static void __attribute__ ((noinline)) eep_read16_sub(uint8_t addr, uint16_t *de
 
 }
 
-static void __attribute__ ((noinline)) eep_can_read16_sub(uint8_t addr, uint16_t *dest) {
-
-	uint8_t not_ready_counter;
-	uint32_t cmd;
-
-	not_ready_counter = 0;
-	*dest = 0xFFFF;
-
-	while (not_ready_counter < 0xFE) {
-
-		if (EEPROM_check()) {
-			not_ready_counter++;
-		}
-		else {
-			cmd = (uint32_t) (EEP_START_BIT | EEP_READ | (addr << 16));
-			*dest = EEPROM_TX_2bytes_RX_2bytes(cmd);
-			return;
-		}
-	}
-	/*
-	txbuf[0] = 0x7A;
-	txbuf[1] = 0x7F;
-	txbuf[2] = 0x21;
-	can_tx8bytes(txbuf);
-	can_idle(750);
-*/
-	return;
-
-}
-
+/*
 static uint32_t __attribute__ ((noinline)) eep_write16_sub(uint8_t addr, uint8_t *data, uint8_t len) {
 
 	uint8_t ecur, not_ready_counter;
@@ -586,7 +559,7 @@ static uint32_t __attribute__ ((noinline)) eep_write16_sub(uint8_t addr, uint8_t
 	return 1;
 
 }
-
+*/
 /* dump command processor, called from cmd_loop.
  * args[0] : address space (0: EEPROM, 1: ROM)
  * args[1,2] : # of 32-byte blocks
@@ -721,33 +694,18 @@ static u8 cks_add8(u8 *data, unsigned len) {
 }
 
 /* compare given CRC with calculated value.
- * data is the first byte after SID_CONF_CKS1
+ * data is the first byte after SID_CONF_CKS
  */
-static int cmd_romcrc(const u8 *data) {
-	unsigned idx;
-	// <CNH> <CNL> <CRC0H> <CRC0L> ...<CRC3H> <CRC3L>
-/*
-    u16 chunkno = (*(data+0) << 8) | *(data+1);
-	for (idx = 0; idx < ROMCRC_NUMCHUNKS; idx++) {
-		u16 crc;
-		data += 2;
-		u16 test_crc = (*(data+0) << 8) | *(data+1);
-		u32 start = chunkno * ROMCRC_CHUNKSIZE;
-		crc = crc16((const u8 *)start, ROMCRC_CHUNKSIZE);
-		if (crc != test_crc) {
-			return -1;
-		}
-		chunkno += 1;
-	}
-*/
-    uint32_t start = (*(data+0) << 24) | (*(data+1) << 16) | (*(data+2) << 8) | *(data+3);
-    uint32_t size = (*(data+4) << 24) | (*(data+5) << 16) | (*(data+6) << 8) | *(data+7);
+static int cmd_romcrc(const u8 *data)
+{
+    uint32_t start = (*(data+0) << 16) | (*(data+1) << 8) | *(data+2);
+    uint32_t size = (*(data+3) << 16) | (*(data+4) << 8) | *(data+5);
 
     uint32_t crc;
     crc = crc32((const u8 *)start, size);
 
     txbuf[0] = SID_CONF + 0x40;
-    txbuf[1] = SID_CONF_CKS1;
+    txbuf[1] = SID_CONF_CKS;
     txbuf[2] = ((crc >> 24) & 0xff);
     txbuf[3] = ((crc >> 16) & 0xff);
     txbuf[4] = ((crc >> 8) & 0xff);
@@ -931,9 +889,9 @@ static void cmd_conf(struct iso14230_msg *msg) {
 		iso_sendpkt(resp, 1);
 		return;
 		break;
-	case SID_CONF_CKS1:
-		//<SID_CONF> <SID_CONF_CKS1> <CNH> <CNL> <CRC0H> <CRC0L> ...<CRC3H> <CRC3L>
-        if (msg->datalen != 10) {
+    case SID_CONF_CKS:
+        //<SID_CONF> <SID_CONF_CKS> <ADDR 3bytes> <SIZE 3bytes>
+        if (msg->datalen != 8) {
 			goto bad12;
 		}
 		if (cmd_romcrc(&msg->data[2])) {
@@ -1093,6 +1051,7 @@ void cmd_loop(void) {
 	die();
 }
 
+#ifndef KLINE
 
 static u8 flashbuffer[128], counter8byteblock;
 static u32 counter128byteblock, flashaddr, num128byteblocks;
@@ -1110,6 +1069,35 @@ static void can_idle(unsigned us) {
 	}
 }
 
+static void __attribute__ ((noinline)) eep_can_read16_sub(uint8_t addr, uint16_t *dest) {
+
+    uint8_t not_ready_counter;
+    uint32_t cmd;
+
+    not_ready_counter = 0;
+    *dest = 0xFFFF;
+
+    while (not_ready_counter < 0xFE) {
+
+        if (EEPROM_check()) {
+            not_ready_counter++;
+        }
+        else {
+            cmd = (uint32_t) (EEP_START_BIT | EEP_READ | (addr << 16));
+            *dest = EEPROM_TX_2bytes_RX_2bytes(cmd);
+            return;
+        }
+    }
+    /*
+    txbuf[0] = 0x7A;
+    txbuf[1] = 0x7F;
+    txbuf[2] = 0x21;
+    can_tx8bytes(txbuf);
+    can_idle(750);
+*/
+    return;
+
+}
 
  /* receives 8 bytes from CAN Channel 0 mailbox 0 into msg
   *
@@ -1233,9 +1221,9 @@ static void can_idle(unsigned us) {
 
     #ifdef ssmk
         #ifdef SH7058
-        	#if defined KLINE // For SH7058 K-Line models (pre MY07)
+            //#if defined KLINE // For SH7058 K-Line models (pre MY07)
         		// Will be added later
-        	#elif defined CAN
+            #if defined CAN
 			    while (NPK_CAN.TXPR0.BIT.MB1) { };
 
 			    NPK_CAN.TXACK0.WORD = 2;
@@ -1289,15 +1277,19 @@ static void can_idle(unsigned us) {
 			    return;
 	        #endif
         #elif defined SH7055
-	        /* 7055 350nm version */
-	        while (NPK_CAN.TXPR.BIT.MB1) { };
+            #if defined CAN
+                while (NPK_CAN.TXPR.BIT.MB1) { };
 
-	        NPK_CAN.TXACK.WORD = 0x0200;
-	        memcpy((void *) &NPK_CAN.MD[1][0], buf, 8);
-	        NPK_CAN.TXPR.WORD = 0x0200;
+                NPK_CAN.TXACK.WORD = 0x0200;
+                memcpy((void *) &NPK_CAN.MD[1][0], buf, 8);
+                NPK_CAN.TXPR.WORD = 0x0200;
 
-	        return;
+                return;
+            #endif
         #endif
+    #endif
+    #ifndef ssmk
+                u8 *buf_temp = buf;
     #endif
 
  }
@@ -1517,44 +1509,40 @@ static void can_cmd_ecuid(u8 *msg) {
 
 /* checksum command processor, 0xD0 command, called from cmd_loop.
  * args[0,1] : 0x7A and SID
- * args[2,3,4] : # of 256-byte blocks (modelled on Denso CAN method that has a max of 6 data bytes per 8 byte packet)
- * args[5,6,7] : (starting address / 256)
+ * args[2,3,4] : # start address
+ * args[5,6,7] : # block size
  *
  *
  *
  */
- static void can_cmd_cks(u8 *msg) {
+ static void can_cmd_cks(u8 *data)
+{
+    uint32_t start = (*(data+2) << 16) | (*(data+3) << 8) | *(data+4);
+    uint32_t size = (*(data+5) << 16) | (*(data+6) << 8) | *(data+7);
 
-	u32 len, cks;
-	u8 *addr;
+    if((data[1] & 0x07) != 6)
+    {
+        memcpy(txbuf, data, 8);
+        txbuf[0] = 0x7F;
+        txbuf[1] = (data[1] & 0xF8) | 0x01;
+        txbuf[2] = 0x30;  // general format error
+        can_tx8bytes(txbuf);
+        return;
+    }
 
-	if((msg[1] & 0x07) != 6) {
-		memcpy(txbuf, msg, 8);
-		txbuf[0] = 0x7F;
-		txbuf[1] = (msg[1] & 0xF8) | 0x01;
-		txbuf[2] = 0x30;  // general format error
-		can_tx8bytes(txbuf);
-		return;
-	}
+    uint32_t crc;
+    crc = crc32((const u8 *)start, size);
 
-	len = ((msg[2] << 24) | (msg[3] << 16) | (msg[4] << 8) | 0x00);
-	addr = (u8 *) ((msg[5] << 24) | (msg[6] << 16) | (msg[7] << 8) | 0x00);
-
-	cks = 0;
-	while (len) {
-		cks += (*addr & 0xFF);
-		cks = ((cks >> 8) & 0xFF) + (cks & 0xFF);
-		len--;
-		addr++;
-	}
-
-	txbuf[0] = 0x7A;
-	txbuf[1] = (msg[1] & 0xF8) | 0x01;
-	txbuf[2] = cks & 0xFF;
-	can_tx8bytes(txbuf);
-
-	return;
-
+    txbuf[0] = SID_CAN_START_COMM;
+    txbuf[1] = (data[1] & 0xF8) | 0x04;
+    txbuf[2] = ((crc >> 24) & 0xff);
+    txbuf[3] = ((crc >> 16) & 0xff);
+    txbuf[4] = ((crc >> 8) & 0xff);
+    txbuf[5] = (crc & 0xff);
+    txbuf[6] = 0x00;
+    txbuf[7] = 0x00;
+    can_tx8bytes(txbuf);
+    return;
  }
 
 
@@ -1705,38 +1693,38 @@ void can_cmd_loop(void) {
 			}
 
 		}
-		else if(currentmsg[0] == 0x7A) {
+        else if(currentmsg[0] == SID_CAN_START_COMM) {
 
 			cmd = currentmsg[1] & 0xF8;
 
 			switch(cmd) {
-			    case SID_CAN_RECUID: // 0xA0
+                case SID_CAN_RECUID: // 0xA0 Request kernel ID
 				    can_cmd_ecuid(currentmsg);
 				    break;
 
-			    case SID_CAN_DUMP_EEPROM: // 0xB8
+                case SID_CAN_DUMP_EEPROM: // 0xB8 Dump eeprom
 				    can_cmd_dump_eeprom(currentmsg);
 				    break;
 
-				case 0xD0: // 0xD0
+                case SID_CAN_CKS: // 0xD0 Request crc32 checksum
 					can_cmd_cks(currentmsg);
 					break;
 
-				case SID_CAN_DUMP: // 0xD8
+                case SID_CAN_DUMP: // 0xD8 Dump ROM
 					can_cmd_dump(currentmsg);
 					break;
 
-				case 0xE0: // 0xE0
+                case SID_CAN_FLASH_INIT: // 0xE0 Init flash write
 					PFC.PDIOR.WORD |= 0x0100;
 					can_cmd_flash_init(currentmsg);
 					break;
 
-				case 0xF0: // 0xF0
+                case SID_CAN_FLASH_ERASE: // 0xF0 Erase flash block
 					can_cmd_erase_block(currentmsg);
 					loadingblocks = true;
 					break;
 
-				case 0xF8: // 0XF8
+                case SID_CAN_FLASH_WRITE: // 0XF8 Write 128 bytes to flash
 					can_cmd_flash_128bytes(currentmsg);
 					counter128byteblock++;
 					if (counter128byteblock < num128byteblocks)
@@ -1778,3 +1766,5 @@ void can_cmd_loop(void) {
 	return;
 
 }
+
+#endif

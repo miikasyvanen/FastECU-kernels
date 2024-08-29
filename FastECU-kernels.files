@@ -23,6 +23,12 @@ functions.h
 iso_cmds.h
 ivect.h
 ivect_7050.h
+kernels/ssmk_can_sh7055.bin
+kernels/ssmk_can_sh7058.bin
+kernels/ssmk_can_tp_sh7058.bin
+kernels/ssmk_can_tp_sh7058d_euro4.bin
+kernels/ssmk_can_tp_sh7059d_euro5.bin
+kernels/ssmk_kline_sh7055.bin
 ldscripts/lkr_7051.ld
 ldscripts/lkr_7055_7058.ld
 ldscripts/lkr_subaru_7055.ld
@@ -31,6 +37,7 @@ ldscripts/lkr_subaru_7058.ld
 ldscripts/lkr_subaru_7058d.ld
 ldscripts/lkr_subaru_7059d.ld
 Makefile
+kernels/ssmk_kline_sh7058.bin
 main.c
 main.lst
 main.su

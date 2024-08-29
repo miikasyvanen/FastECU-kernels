@@ -47,9 +47,17 @@ make BUILDWHAT=SH7058 BUILDCOMMS=CAN_TP BUILDMEM=FLASH
 echo "\033[32mCompile SH7058 CAN-TP kernel finished!\033[0m"
 
 echo
-echo "\033[32mCompiling SH7058 Diesel Denso CAN-TP kernel... please wait!\033[0m"
+echo "\033[32mCompiling SH7058 Diesel CAN-TP kernel... please wait!\033[0m"
 echo "\033[32mCleaning up first...\033[0m"
 make clean BUILDWHAT=SH7058D_EURO4 BUILDCOMMS=CAN_TP BUILDMEM=FLASH
 echo "\033[32mCompiling...\033[0m"
 make BUILDWHAT=SH7058D_EURO4 BUILDCOMMS=CAN_TP BUILDMEM=FLASH
-echo "\033[32mCompile SH7058 CAN-TP kernel finished!\033[0m"
+echo "\033[32mCompile SH7058 Diesel CAN-TP kernel finished!\033[0m"
+
+echo
+echo "\033[32mCompiling SH7059 Diesel CAN-TP kernel... please wait!\033[0m"
+echo "\033[32mCleaning up first...\033[0m"
+make clean BUILDWHAT=SH7059D_EURO5 BUILDCOMMS=CAN_TP BUILDMEM=FLASH
+echo "\033[32mCompiling...\033[0m"
+make BUILDWHAT=SH7059D_EURO5 BUILDCOMMS=CAN_TP BUILDMEM=FLASH
+echo "\033[32mCompile SH7059 Diesel CAN-TP kernel finished!\033[0m"

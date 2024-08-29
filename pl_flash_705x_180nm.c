@@ -83,6 +83,37 @@
 		0x00100000,	/* end delimiter */
 	};
 
+#elif defined(SH7059D_EURO5)
+// 7058S needs 3kB for each microcode (vs 2k for 7055_18 / 7058).
+// leaving one 2k chunk empty between ERASE and WRITE does no harm
+// on 7058.
+    #define FTDAR_ERASE 0x02
+    #define FTDAR_WRITE 0x04
+    #define FL_ERASE_BASE	0xFFFF2000
+    #define FL_WRITE_BASE	0xFFFF4000
+
+    #define FL_MAXROM	(1024*1024UL - 1UL)
+
+    const u32 fblocks[] = {
+        0x00000000,
+        0x00001000,
+        0x00002000,
+        0x00003000,
+        0x00004000,
+        0x00005000,
+        0x00006000,
+        0x00007000,
+        0x00008000,
+        0x00020000,
+        0x00040000,
+        0x00060000,
+        0x00080000,
+        0x000C0000,
+        0x00100000,
+        0x00140000,
+        0x00180000,	/* end delimiter */
+    };
+
 #elif defined(SH7058D_EURO4)
 // 7058S needs 3kB for each microcode (vs 2k for 7055_18 / 7058).
 // leaving one 2k chunk empty between ERASE and WRITE does no harm
