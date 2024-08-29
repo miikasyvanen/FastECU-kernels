@@ -1175,19 +1175,19 @@ static void __attribute__ ((noinline)) eep_can_read16_sub(uint8_t addr, uint16_t
 			    NPK_CAN.UMSR0.WORD = 1;
 			    NPK_CAN.RXPR0.WORD = 1;
 			    return -1;
-        	#elif defined CAN_TP
-			    if(!NPK_CAN.RXPR0.BIT.MB14) return 0;
+            #elif defined CAN_TP
+                if(!NPK_CAN.RXPR1.BIT.MB31) return 0;
 
-			    if(!NPK_CAN.UMSR0.BIT.MB14)
-		        {
-				    memcpy(msg, (void *) &NPK_CAN.MB[14].MSG_DATA[0], 8);
-				    NPK_CAN.RXPR0.WORD = 0x4000;
-				    return 1;
-			    }
-			    NPK_CAN.UMSR0.WORD = 0x4000;
-			    NPK_CAN.RXPR0.WORD = 0x4000;
-			    return -1;
-	        #endif
+                if(!NPK_CAN.UMSR1.BIT.MB31)
+                {
+                    memcpy(msg, (void *) &NPK_CAN.MB[31].MSG_DATA[0], 8);
+                    NPK_CAN.RXPR1.WORD = 0x8000;
+                    return 1;
+                }
+                NPK_CAN.UMSR1.WORD = 0x8000;
+                NPK_CAN.RXPR1.WORD = 0x8000;
+                return -1;
+            #endif
         #elif defined SH7055
         	#if defined KLINE
         		// Will be added later
@@ -1268,14 +1268,14 @@ static void __attribute__ ((noinline)) eep_can_read16_sub(uint8_t addr, uint16_t
 
 			    return;
         	#elif defined CAN_TP
-			    while (NPK_CAN.TXPR0.BIT.MB15) { };
+                while (NPK_CAN.TXPR1.BIT.MB30) { };
 
-			    NPK_CAN.TXACK0.WORD = 0x8000;
-			    memcpy((void *) &NPK_CAN.MB[15].MSG_DATA[0], buf, 8);
-			    NPK_CAN.TXPR0.WORD = 0x8000;
+                NPK_CAN.TXACK1.WORD = 0x4000;
+                memcpy((void *) &NPK_CAN.MB[30].MSG_DATA[0], buf, 8);
+                NPK_CAN.TXPR1.WORD = 0x4000;
 
-			    return;
-	        #endif
+                return;
+            #endif
         #elif defined SH7055
             #if defined CAN
                 while (NPK_CAN.TXPR.BIT.MB1) { };
