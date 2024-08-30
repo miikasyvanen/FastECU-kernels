@@ -87,10 +87,10 @@
 // 7058S needs 3kB for each microcode (vs 2k for 7055_18 / 7058).
 // leaving one 2k chunk empty between ERASE and WRITE does no harm
 // on 7058.
-    #define FTDAR_ERASE 0x00
-    #define FTDAR_WRITE 0x01
-    #define FL_ERASE_BASE	0xFFFE8000
-    #define FL_WRITE_BASE	0xFFFE8800
+    #define FTDAR_ERASE 0x02
+    #define FTDAR_WRITE 0x04
+    #define FL_ERASE_BASE	0xFFFE9000
+    #define FL_WRITE_BASE	0xFFFEA000
 
     #define FL_MAXROM	(1536*1024UL - 1UL)
 
