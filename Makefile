@@ -119,7 +119,11 @@ ifeq ($(BUILDPROTOCOL), ssmk)
 	    LDSCRIPT = ldscripts/lkr_subaru_7055.ld
     else ifeq ($(BUILDWHAT), SH7059D_EURO5)
 	    SRC += platf_7055.c pl_flash_705x_180nm.c
-	    LDSCRIPT = ldscripts/lkr_subaru_7059d.ld
+	    ifeq ($(BUILDCOMMS), CAN_TP)
+  	    LDSCRIPT = ldscripts/lkr_subaru_7059d.ld
+	    else ifeq ($(BUILDCOMMS), CAN)
+  	    LDSCRIPT = ldscripts/lkr_subaru_7058.ld
+      endif
     else ifeq ($(BUILDWHAT), SH7058D_EURO4)
 	    SRC += platf_7055.c pl_flash_705x_180nm.c
 	    LDSCRIPT = ldscripts/lkr_subaru_7058d.ld
