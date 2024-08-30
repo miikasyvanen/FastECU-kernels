@@ -25,6 +25,7 @@ ivect.h
 ivect_7050.h
 kernels/ssmk_can_sh7055.bin
 kernels/ssmk_can_sh7058.bin
+kernels/ssmk_can_sh7059d_euro5.bin
 kernels/ssmk_can_tp_sh7058.bin
 kernels/ssmk_can_tp_sh7058d_euro4.bin
 kernels/ssmk_can_tp_sh7059d_euro5.bin
