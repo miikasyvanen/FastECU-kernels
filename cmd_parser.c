@@ -1334,7 +1334,7 @@ static void can_tx8bytes(const u8 *buf)
 		#endif
 	#endif
 	#ifndef ssmk
-		u8 *buf_temp = buf;
+        u8 *buf_temp = buf;
     #endif
  }
 
@@ -1462,7 +1462,7 @@ static void can_cmd_flash_init(u8 *msg) {
 
 	flashCheckSum = 0;
 
-	for (i = 0; i < 128; i++) {
+    for (i = 0; i < flashblocksize; i++) {
 		flashCheckSum += flashbuffer[i];
 		flashCheckSum = ((flashCheckSum >> 8) & 0xFF) + (flashCheckSum & 0xFF);
 	}
@@ -1488,9 +1488,9 @@ static void can_cmd_flash_init(u8 *msg) {
 		return;
 	}
 
-	addr = flashaddr + (128 * counter128byteblock);
+    addr = flashaddr + (flashblocksize * counter128byteblock);
 
-	rv = platf_flash_wb(addr, (u32) flashbuffer, 128);
+    rv = platf_flash_wb(addr, (u32) flashbuffer, flashblocksize);
 
 	if(rv) {
 		memcpy(txbuf, msg, 8);
