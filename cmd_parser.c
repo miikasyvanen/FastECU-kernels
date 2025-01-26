@@ -36,13 +36,39 @@
  * in front of the version string
  */
 #if defined(SH7059D_EURO5)
-static const u8 npk_ver_string[] = "FastECU Subaru SH7059 CAN EURO5 Diesel Kernel v1.00";
+	#if defined(CAN)
+		static const u8 npk_ver_string[] = "FastECU Subaru SH7059 CAN EURO5 Diesel CAN Kernel v1.00";
+	#elif defined(CAN_TP)
+		static const u8 npk_ver_string[] = "FastECU Subaru SH7059 CAN EURO5 Diesel iso15765 Kernel v1.00";
+	#endif
 #elif defined(SH7058D_EURO4)
-static const u8 npk_ver_string[] = "FastECU Subaru SH7058 CAN EURO4 Diesel Kernel v1.00";
+	static const u8 npk_ver_string[] = "FastECU Subaru SH7058 CAN EURO4 Diesel Kernel v1.00";
 #elif defined(SH7058)
-static const u8 npk_ver_string[] = "FastECU Subaru SH7058 CAN Kernel v1.00";
+	#if defined(KLINE)
+		static const u8 npk_ver_string[] = "FastECU Subaru SH7058 K-Line Kernel v1.00";
+	#elif defined(CAN)
+		static const u8 npk_ver_string[] = "FastECU Subaru SH7058 CAN Kernel v1.00";
+	#elif defined(CAN_TP)
+		static const u8 npk_ver_string[] = "FastECU Subaru SH7058 iso15765 Kernel v1.00";
+	#endif
 #elif defined(SH7055)
-static const u8 npk_ver_string[] = "FastECU Subaru SH7055 CAN Kernel v1.00";
+	#if defined(KLINE)
+		static const u8 npk_ver_string[] = "FastECU Subaru SH7055 K-Line Kernel v1.00";
+	#elif defined(CAN)
+		static const u8 npk_ver_string[] = "FastECU Subaru SH7055 CAN Kernel v1.00";
+	#endif
+#endif
+
+
+/* generic buffer to construct responses. Saves a lot of stack vs
+ * each function declaring its buffer as a local var : gcc tends to inline everything
+ * but not combine /overlap each buffer.
+ * We just need to make sure the comms functions (iso_sendpkt, tx_7F etc) use their own
+ * private buffers. */
+static u8 txbuf[256];
+
+#if defined(KLINE)
+static void tx_7F(u8 sid, u8 nrc);
 #endif
 
 typedef enum {
@@ -53,6 +79,275 @@ typedef enum {
 
 int EEPROM_SCI = 0;
 int EEPROM_CS = 0;
+
+//#define EEP_COMMS3
+#define EEP_START_BIT     	0x04000000
+#define EEP_READ          	0x02000000
+#define EEP_WRITE_ENABLE  	0x00C00000
+#define EEP_WRITE         	0x01000000
+#define EEP_WRITE_DISABLE 	0x00000000
+
+#define SCI3_CS_PJ2			0x0004 // PJ2
+#define SCI3_CS_PJ3			0x0008 // PJ3
+#define SCI4_CS				0x0400 // PF10
+
+void __attribute__ ((noinline)) delay(int mult) {
+	asm("mov #0x0,r5");
+	asm("shll2 %0"::"r"(mult):"r5");
+	asm("shll r4");
+	asm("cmp/hs r4,r5");
+	asm("bt 1f");
+	asm("0:");
+	asm("add #0x1,r5");
+	asm("cmp/hs r4,r5");
+	asm("bf 0b");
+	asm("1:");
+}
+
+void set_sci3_cs(void) {
+	if (EEPROM_SCI == EEPSCI3_PJ2)
+		PJ.DR.WORD |= SCI3_CS_PJ2;      // PJ2 (gen I/O) on - looks like PJ2 is connected to EEPROM CS
+	if (EEPROM_SCI == EEPSCI3_PJ3)
+		PJ.DR.WORD |= SCI3_CS_PJ3;      // PJ3 (gen I/O) on - looks like PJ3 is connected to EEPROM CS
+}
+
+void clear_sci3_cs(void) {
+	if (EEPROM_SCI == EEPSCI3_PJ2)
+		PJ.DR.WORD &= ~SCI3_CS_PJ2;     // PJ3 (gen I/O) off - CS off
+	if (EEPROM_SCI == EEPSCI3_PJ3)
+		PJ.DR.WORD &= ~SCI3_CS_PJ3;     // PJ3 (gen I/O) off - CS off
+}
+
+void set_sci4_cs(void) {
+		PF.DR.WORD |= SCI4_CS;			// PF10 (gen I/O) off  (EEPROM CS off)
+}
+
+void clear_sci4_cs(void) {
+		PF.DR.WORD &= ~SCI4_CS;         // PF10 (gen I/O) off  (EEPROM CS off)
+}
+
+bool __attribute__ ((noinline)) EEPROM_check(void) {
+
+    bool pbpin = false;
+
+	if (EEPROM_SCI == EEPSCI4_PF10) {
+		//Toggle PF10 & short delay
+		set_sci4_cs();                              // PF10 (gen I/O) on - looks like PF10 is connected to EEPROM CS
+		delay(2);
+		pbpin = ((PB.DR.WORD & 0x0800) == 0);		// pbpin = 0 if PB11(RxD4) == 1 - maybe the 'dummy bit'
+		clear_sci4_cs();                            // PF10 (gen I/O) off - CS off
+	}
+	else if (EEPROM_SCI == EEPSCI3_PJ2 || EEPROM_SCI == EEPSCI3_PJ3) {
+		//Toggle PJ2 & short delay
+		set_sci3_cs();
+		delay(2);
+		pbpin = ((PB.DR.WORD & 0x0200) == 0);       // pbpin = 0 if PB9(RxD3) == 1 - maybe the 'dummy bit'
+		clear_sci3_cs();							// PJ2/3 (gen I/O) off - CS off
+	}
+
+	return pbpin;
+
+
+
+}
+
+void __attribute__ ((noinline)) EEPROM_init(void) {
+
+	if (EEPROM_SCI == EEPSCI4_PF10) {
+		// prepare for read
+		PFC.PLIR.WORD &= ~0x0200;                          // PL9 (SCK4) not inverted
+		PFC.PBCRH.WORD &= ~0x0030;                          // turn off PB10MD0 and PB10MD1 - set PB10 to general I/O
+		PB.DR.WORD &= ~0x0400;                             // turn off PB10 (general I/O)
+		set_sci4_cs();                              // turn on  PF10 (general I/O) - bring EEPROM CS high
+		PFC.PBCRH.WORD = (PFC.PBCRH.WORD & ~0x0030) | 0x0010; // turn off PB10MD0 and PB10MD1 - set PB10 to general I/O THEN set PB10 to TxD4
+	}
+	else if (EEPROM_SCI == EEPSCI3_PJ2 || EEPROM_SCI == EEPSCI3_PJ3) {
+		// prepare for read
+		PFC.PLIR.WORD &= ~0x0100;                          // PL8 (SCK3) not inverted
+		PFC.PBCRH.WORD &= ~0x0003;                          // turn off PB8MD0 and PB8MD1 - set PB8 to general I/O
+		PB.DR.WORD &= ~0x0100;                             // turn off PB8 (general I/O)
+		set_sci3_cs();
+		PFC.PBCRH.WORD = (PFC.PBCRH.WORD & ~0x0003) | 0x0001; // turn off PB8MD0 and PB8MD1 - set PB8 to general I/O THEN set PB8 to TxD3
+	}
+
+	return;
+
+}
+
+void __attribute__ ((noinline)) EEPROM_send_cmd(uint32_t cmd, uint32_t len) {
+
+	uint8_t i, eeprom_cmd[4];
+
+	eeprom_cmd[0] = (uint8_t) ((cmd >> 24) & 0xFF);
+	eeprom_cmd[1] = (uint8_t) ((cmd >> 16) & 0xFF);
+	eeprom_cmd[2] = (uint8_t) ((cmd >> 8) & 0xFF);
+	eeprom_cmd[3] = (uint8_t) (cmd & 0xFF);
+
+	if (EEPROM_SCI == EEPSCI4_PF10) {
+		// TX len bytes - send command, 2 bytes for read, 4 bytes for write
+		SCI4.SCR.BYTE = (SCI4.SCR.BYTE & 0x0B) | 0x20;     // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output THEN TX enabled
+		for (i = 0; i < len; i++) {
+			while ((SCI4.SSR.BYTE & 0x80) == 0) {  };      // wait until TDR does not contain valid TX data (ie) it has gone to TSR
+			SCI4.TDR = eeprom_cmd[i];                      // set TDR
+			SCI4.SSR.BYTE = (SCI4.SSR.BYTE & 0x7F) | 0x78; // clear TDRE and ?? CPU cannot write 1 to the status flags ??
+		}
+		while ((SCI4.SSR.BYTE & 0x04) == 0) {  };          // wait until transmission ended
+		SCI4.SCR.BYTE &= 0x0B;                             // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output
+	}
+	else if (EEPROM_SCI == EEPSCI3_PJ2 || EEPROM_SCI == EEPSCI3_PJ3) {
+		// TX len bytes - send command, 2 bytes for read, 4 bytes for write
+		SCI3.SCR.BYTE = (SCI3.SCR.BYTE & 0x0B) | 0x20;     // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output THEN TX enabled
+		for (i = 0; i < len; i++) {
+			while ((SCI3.SSR.BYTE & 0x80) == 0) {  };      // wait until TDR does not contain valid TX data (ie) it has gone to TSR
+			SCI3.TDR = eeprom_cmd[i];                      // set TDR
+			SCI3.SSR.BYTE = (SCI3.SSR.BYTE & 0x7F) | 0x78; // clear TDRE and ?? CPU cannot write 1 to the status flags ??
+		}
+		while ((SCI3.SSR.BYTE & 0x04) == 0) {  };          // wait until transmission ended
+		SCI3.SCR.BYTE &= 0x0B;                             // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output
+	}
+
+	return;
+
+}
+
+uint16_t __attribute__ ((noinline)) EEPROM_get_rsp(void) {
+
+	uint8_t i, eeprom_rsp[2];
+
+	if (EEPROM_SCI == EEPSCI4_PF10) {
+		// RX 2 bytes
+		PFC.PLIR.WORD |= 0x0200;                           // PL9 (SCK4) inverted
+		SCI4.SCR.BYTE = (SCI4.SCR.BYTE & 0x0B) | 0x30;     // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output THEN TX, RX enabled
+		for (i = 0; i < 2; i++) {
+			SCI4.TDR = 0x00;                               // set TDR
+			SCI4.SSR.BYTE = (SCI4.SSR.BYTE & 0x7F) | 0x78; // clear TDRE and ?? CPU cannot write 1 to the status flags ??
+			while ((SCI4.SSR.BYTE & 0x40) == 0) {  };      // wait until RDR contains valid received data
+			eeprom_rsp[i] = SCI4.RDR;                      // store RDR data
+			SCI4.SSR.BYTE = (SCI4.SSR.BYTE & 0xBF) | 0xB8; // clear RDRF and ?? CPU cannot write 1 to the status flags ??
+		}
+		SCI4.SCR.BYTE &= 0x0B;                             // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output
+		PFC.PLIR.WORD &= ~0x0200;                          // PL9 (SCK4) not inverted
+	}
+	else if (EEPROM_SCI == EEPSCI3_PJ2 || EEPROM_SCI == EEPSCI3_PJ3) {
+		// RX 2 bytes
+		PFC.PLIR.WORD |= 0x0100;                           // PL8 (SCK3) inverted
+		SCI3.SCR.BYTE = (SCI3.SCR.BYTE & 0x0B) | 0x30;     // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output THEN TX, RX enabled
+		for (i = 0; i < 2; i++) {
+			SCI3.TDR = 0x00;                               // set TDR
+			SCI3.SSR.BYTE = (SCI3.SSR.BYTE & 0x7F) | 0x78; // clear TDRE and ?? CPU cannot write 1 to the status flags ??
+			while ((SCI3.SSR.BYTE & 0x40) == 0) {  };      // wait until RDR contains valid received data
+			eeprom_rsp[i] = SCI3.RDR;                      // store RDR data
+			SCI3.SSR.BYTE = (SCI3.SSR.BYTE & 0xBF) | 0xB8; // clear RDRF and ?? CPU cannot write 1 to the status flags ??
+		}
+		SCI3.SCR.BYTE &= 0x0B;                             // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output
+		PFC.PLIR.WORD &= ~0x0100;                          // PL8 (SCK3) not inverted
+	}
+
+	return (uint16_t) ((eeprom_rsp[0] << 8) | eeprom_rsp[1]);
+
+}
+
+uint16_t __attribute__ ((noinline)) EEPROM_TX_2bytes_RX_2bytes(uint32_t cmd) {
+
+	uint16_t rsp;
+
+	EEPROM_init();
+	EEPROM_send_cmd(cmd, 2);
+	rsp = EEPROM_get_rsp();
+
+	if (EEPROM_SCI == EEPSCI4_PF10)
+		clear_sci4_cs();
+	else if (EEPROM_SCI == EEPSCI3_PJ2 || EEPROM_SCI == EEPSCI3_PJ3)
+		clear_sci3_cs();
+
+	return (uint16_t) rsp;
+
+}
+
+void __attribute__ ((noinline)) EEPROM_TX_bytes(uint32_t cmd, uint8_t len) {
+
+	EEPROM_init();
+	EEPROM_send_cmd(cmd, len);
+
+	if (EEPROM_SCI == EEPSCI4_PF10)
+		clear_sci4_cs();
+	else if (EEPROM_SCI == EEPSCI3_PJ2 || EEPROM_SCI == EEPSCI3_PJ3)
+		clear_sci3_cs();
+
+	return;
+
+}
+
+
+#if defined(KLINE)
+static void __attribute__ ((noinline)) eep_read16_sub(uint8_t addr, uint16_t *dest) {
+
+	uint8_t not_ready_counter;
+	uint32_t cmd;
+
+	not_ready_counter = 0;
+	*dest = 0xFFFF;
+
+	while (not_ready_counter < 0xFE) {
+
+		if (EEPROM_check()) {
+			not_ready_counter++;
+		}
+		else {
+			cmd = (uint32_t) (EEP_START_BIT | EEP_READ | (addr << 16));
+			*dest = EEPROM_TX_2bytes_RX_2bytes(cmd);
+			return;
+		}
+	}
+
+	tx_7F(SID_DUMP, ISO_NRC_GR);
+	return;
+
+}
+
+/*
+static uint32_t __attribute__ ((noinline)) eep_write16_sub(uint8_t addr, uint8_t *data, uint8_t len) {
+
+	uint8_t ecur, not_ready_counter;
+	uint32_t cmd;
+
+	not_ready_counter = 0;
+	addr /= 2;	// modify address to fit with eeprom 256*16bit org
+	len &= ~1;	// align to 16bits
+
+	while (not_ready_counter < 0xFE) {
+
+		if(EEPROM_check()) {
+			not_ready_counter++;
+		}
+		else {
+			for (ecur = 0; ecur < (len / 2); ecur++) {
+				cmd = (uint32_t) (EEP_START_BIT | EEP_WRITE_ENABLE);   // perhaps this could be outside the loop
+				EEPROM_TX_bytes(cmd, 2);
+
+				cmd = (uint32_t) (EEP_START_BIT | EEP_WRITE);
+				cmd	|= (uint32_t) (addr << 16);
+				cmd |= (uint32_t) (data[ecur * 2] << 8);
+				cmd |= (uint32_t) (data[(ecur * 2) + 1]);
+				EEPROM_TX_bytes(cmd, 4);
+
+				delay(7000);  // allow time for write (5ms)
+				addr++;
+			}
+
+			cmd = (uint32_t) (EEP_START_BIT | EEP_WRITE_DISABLE);
+			EEPROM_TX_bytes(cmd, 2);
+
+			return 0;
+
+		}
+
+	}
+
+	return 1;
+
+}
+*/
 
 /* low-level error code, to give more detail about errors than the SID 7F NRC can provide,
  * without requiring the error string list of nisprog to be updated.
@@ -68,14 +363,6 @@ struct iso14230_msg {
 	u8	hdr[4];
 	u8	data[256];	//255 data bytes + checksum
 };
-
-/* generic buffer to construct responses. Saves a lot of stack vs
- * each function declaring its buffer as a local var : gcc tends to inline everything
- * but not combine /overlap each buffer.
- * We just need to make sure the comms functions (iso_sendpkt, tx_7F etc) use their own
- * private buffers. */
-static u8 txbuf[256];
-
 
 void set_lasterr(u8 err) {
 	lasterr = err;
@@ -302,264 +589,7 @@ static void cmd_startcomm(void) {
 	flashstate = FL_IDLE;
 }
 
-//#define EEP_COMMS3
-#define EEP_START_BIT     	0x04000000
-#define EEP_READ          	0x02000000
-#define EEP_WRITE_ENABLE  	0x00C00000
-#define EEP_WRITE         	0x01000000
-#define EEP_WRITE_DISABLE 	0x00000000
 
-#define SCI3_CS_PJ2			0x0004 // PJ2
-#define SCI3_CS_PJ3			0x0008 // PJ3
-#define SCI4_CS				0x0400 // PF10
-
-void __attribute__ ((noinline)) delay(int mult) {
-	asm("mov #0x0,r5");
-	asm("shll2 %0"::"r"(mult):"r5");
-	asm("shll r4");
-	asm("cmp/hs r4,r5");
-	asm("bt 1f");
-	asm("0:");
-	asm("add #0x1,r5");
-	asm("cmp/hs r4,r5");
-	asm("bf 0b");
-	asm("1:");
-}
-
-void set_sci3_cs(void) {
-	if (EEPROM_SCI == EEPSCI3_PJ2)
-		PJ.DR.WORD |= SCI3_CS_PJ2;                                  // PJ2 (gen I/O) on - looks like PJ2 is connected to EEPROM CS
-	if (EEPROM_SCI == EEPSCI3_PJ3)
-		PJ.DR.WORD |= SCI3_CS_PJ3;                                  // PJ3 (gen I/O) on - looks like PJ3 is connected to EEPROM CS
-}
-
-void clear_sci3_cs(void) {
-	if (EEPROM_SCI == EEPSCI3_PJ2)
-		PJ.DR.WORD &= ~SCI3_CS_PJ2;                                 // PJ3 (gen I/O) off - CS off
-	if (EEPROM_SCI == EEPSCI3_PJ3)
-		PJ.DR.WORD &= ~SCI3_CS_PJ3;                                 // PJ3 (gen I/O) off - CS off
-}
-
-bool __attribute__ ((noinline)) EEPROM_check(void) {
-
-    bool pbpin = false;
-
-	if (EEPROM_SCI == EEPSCI4_PF10) {
-		//Toggle PF10 & short delay
-		PF.DR.WORD |= SCI4_CS;                                  // PF10 (gen I/O) on - looks like PF10 is connected to EEPROM CS
-		delay(2);
-		pbpin = ((PB.DR.WORD & 0x0800) == 0);                  // pbpin = 0 if PB11(RxD4) == 1 - maybe the 'dummy bit'
-		PF.DR.WORD &= ~SCI4_CS;                                 // PF10 (gen I/O) off - CS off
-	}
-	else if (EEPROM_SCI == EEPSCI3_PJ2 || EEPROM_SCI == EEPSCI3_PJ3) {
-		//Toggle PJ2 & short delay
-		set_sci3_cs();
-		delay(2);
-		pbpin = ((PB.DR.WORD & 0x0200) == 0);                  // pbpin = 0 if PB9(RxD3) == 1 - maybe the 'dummy bit'
-		clear_sci3_cs();
-	}
-
-	return pbpin;
-
-
-
-}
-
-void __attribute__ ((noinline)) EEPROM_init(void) {
-
-	if (EEPROM_SCI == EEPSCI4_PF10) {
-		// prepare for read
-		PFC.PLIR.WORD &= ~0x0200;                          // PL9 (SCK4) not inverted
-		PFC.PBCRH.WORD &= ~0x0030;                          // turn off PB10MD0 and PB10MD1 - set PB10 to general I/O
-		PB.DR.WORD &= ~0x0400;                             // turn off PB10 (general I/O)
-		PF.DR.WORD |= SCI4_CS;                              // turn on  PF10 (general I/O) - bring EEPROM CS high
-		PFC.PBCRH.WORD = (PFC.PBCRH.WORD & ~0x0030) | 0x0010; // turn off PB10MD0 and PB10MD1 - set PB10 to general I/O THEN set PB10 to TxD4
-	}
-	else if (EEPROM_SCI == EEPSCI3_PJ2 || EEPROM_SCI == EEPSCI3_PJ3) {
-		// prepare for read
-		PFC.PLIR.WORD &= ~0x0100;                          // PL8 (SCK3) not inverted
-		PFC.PBCRH.WORD &= ~0x0003;                          // turn off PB8MD0 and PB8MD1 - set PB8 to general I/O
-		PB.DR.WORD &= ~0x0100;                             // turn off PB8 (general I/O)
-		set_sci3_cs();
-		PFC.PBCRH.WORD = (PFC.PBCRH.WORD & ~0x0003) | 0x0001; // turn off PB8MD0 and PB8MD1 - set PB8 to general I/O THEN set PB8 to TxD3
-	}
-
-	return;
-
-}
-
-void __attribute__ ((noinline)) EEPROM_send_cmd(uint32_t cmd, uint32_t len) {
-
-	uint8_t i, eeprom_cmd[4];
-
-	eeprom_cmd[0] = (uint8_t) ((cmd >> 24) & 0xFF);
-	eeprom_cmd[1] = (uint8_t) ((cmd >> 16) & 0xFF);
-	eeprom_cmd[2] = (uint8_t) ((cmd >> 8) & 0xFF);
-	eeprom_cmd[3] = (uint8_t) (cmd & 0xFF);
-
-	if (EEPROM_SCI == EEPSCI4_PF10) {
-		// TX len bytes - send command, 2 bytes for read, 4 bytes for write
-		SCI4.SCR.BYTE = (SCI4.SCR.BYTE & 0x0B) | 0x20;     // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output THEN TX enabled
-		for (i = 0; i < len; i++) {
-			while ((SCI4.SSR.BYTE & 0x80) == 0) {  };      // wait until TDR does not contain valid TX data (ie) it has gone to TSR
-			SCI4.TDR = eeprom_cmd[i];                      // set TDR
-			SCI4.SSR.BYTE = (SCI4.SSR.BYTE & 0x7F) | 0x78; // clear TDRE and ?? CPU cannot write 1 to the status flags ??
-		}
-		while ((SCI4.SSR.BYTE & 0x04) == 0) {  };          // wait until transmission ended
-		SCI4.SCR.BYTE &= 0x0B;                             // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output
-	}
-	else if (EEPROM_SCI == EEPSCI3_PJ2 || EEPROM_SCI == EEPSCI3_PJ3) {
-		// TX len bytes - send command, 2 bytes for read, 4 bytes for write
-		SCI3.SCR.BYTE = (SCI3.SCR.BYTE & 0x0B) | 0x20;     // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output THEN TX enabled
-		for (i = 0; i < len; i++) {
-			while ((SCI3.SSR.BYTE & 0x80) == 0) {  };      // wait until TDR does not contain valid TX data (ie) it has gone to TSR
-			SCI3.TDR = eeprom_cmd[i];                      // set TDR
-			SCI3.SSR.BYTE = (SCI3.SSR.BYTE & 0x7F) | 0x78; // clear TDRE and ?? CPU cannot write 1 to the status flags ??
-		}
-		while ((SCI3.SSR.BYTE & 0x04) == 0) {  };          // wait until transmission ended
-		SCI3.SCR.BYTE &= 0x0B;                             // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output
-	}
-
-	return;
-
-}
-
-uint16_t __attribute__ ((noinline)) EEPROM_get_rsp(void) {
-
-	uint8_t i, eeprom_rsp[2];
-
-	if (EEPROM_SCI == EEPSCI4_PF10) {
-		// RX 2 bytes
-		PFC.PLIR.WORD |= 0x0200;                           // PL9 (SCK4) inverted
-		SCI4.SCR.BYTE = (SCI4.SCR.BYTE & 0x0B) | 0x30;     // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output THEN TX, RX enabled
-		for (i = 0; i < 2; i++) {
-			SCI4.TDR = 0x00;                               // set TDR
-			SCI4.SSR.BYTE = (SCI4.SSR.BYTE & 0x7F) | 0x78; // clear TDRE and ?? CPU cannot write 1 to the status flags ??
-			while ((SCI4.SSR.BYTE & 0x40) == 0) {  };      // wait until RDR contains valid received data
-			eeprom_rsp[i] = SCI4.RDR;                      // store RDR data
-			SCI4.SSR.BYTE = (SCI4.SSR.BYTE & 0xBF) | 0xB8; // clear RDRF and ?? CPU cannot write 1 to the status flags ??
-		}
-		SCI4.SCR.BYTE &= 0x0B;                             // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output
-		PFC.PLIR.WORD &= ~0x0200;                          // PL9 (SCK4) not inverted
-	}
-	else if (EEPROM_SCI == EEPSCI3_PJ2 || EEPROM_SCI == EEPSCI3_PJ3) {
-		// RX 2 bytes
-		PFC.PLIR.WORD |= 0x0100;                           // PL8 (SCK3) inverted
-		SCI3.SCR.BYTE = (SCI3.SCR.BYTE & 0x0B) | 0x30;     // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output THEN TX, RX enabled
-		for (i = 0; i < 2; i++) {
-			SCI3.TDR = 0x00;                               // set TDR
-			SCI3.SSR.BYTE = (SCI3.SSR.BYTE & 0x7F) | 0x78; // clear TDRE and ?? CPU cannot write 1 to the status flags ??
-			while ((SCI3.SSR.BYTE & 0x40) == 0) {  };      // wait until RDR contains valid received data
-			eeprom_rsp[i] = SCI3.RDR;                      // store RDR data
-			SCI3.SSR.BYTE = (SCI3.SSR.BYTE & 0xBF) | 0xB8; // clear RDRF and ?? CPU cannot write 1 to the status flags ??
-		}
-		SCI3.SCR.BYTE &= 0x0B;                             // TXI, RXI, TX, RX, TEI disabled, internal clock/SCI pin used for sync clock output
-		PFC.PLIR.WORD &= ~0x0100;                          // PL8 (SCK3) not inverted
-	}
-
-	return (uint16_t) ((eeprom_rsp[0] << 8) | eeprom_rsp[1]);
-
-}
-
-uint16_t __attribute__ ((noinline)) EEPROM_TX_2bytes_RX_2bytes(uint32_t cmd) {
-
-	uint16_t rsp;
-
-	EEPROM_init();
-	EEPROM_send_cmd(cmd, 2);
-	rsp = EEPROM_get_rsp();
-
-	if (EEPROM_SCI == EEPSCI4_PF10)
-		PF.DR.WORD &= ~SCI4_CS;                             // PF10 (gen I/O) off  (EEPROM CS off)
-	else if (EEPROM_SCI == EEPSCI3_PJ2 || EEPROM_SCI == EEPSCI3_PJ3)
-		clear_sci3_cs();
-
-	return (uint16_t) rsp;
-
-}
-
-void __attribute__ ((noinline)) EEPROM_TX_bytes(uint32_t cmd, uint8_t len) {
-
-	EEPROM_init();
-	EEPROM_send_cmd(cmd, len);
-
-	if (EEPROM_SCI == EEPSCI4_PF10)
-		PF.DR.WORD &= ~SCI4_CS;                             // PF10 (gen I/O) off  (EEPROM CS off)
-	else if (EEPROM_SCI == EEPSCI3_PJ2 || EEPROM_SCI == EEPSCI3_PJ3)
-		clear_sci3_cs();
-
-	return;
-
-}
-
-static void __attribute__ ((noinline)) eep_read16_sub(uint8_t addr, uint16_t *dest) {
-
-	uint8_t not_ready_counter;
-	uint32_t cmd;
-
-	not_ready_counter = 0;
-	*dest = 0xFFFF;
-
-	while (not_ready_counter < 0xFE) {
-
-		if (EEPROM_check()) {
-			not_ready_counter++;
-		}
-		else {
-			cmd = (uint32_t) (EEP_START_BIT | EEP_READ | (addr << 16));
-			*dest = EEPROM_TX_2bytes_RX_2bytes(cmd);
-			return;
-		}
-	}
-
-	tx_7F(SID_DUMP, ISO_NRC_GR);
-	return;
-
-}
-
-/*
-static uint32_t __attribute__ ((noinline)) eep_write16_sub(uint8_t addr, uint8_t *data, uint8_t len) {
-
-	uint8_t ecur, not_ready_counter;
-	uint32_t cmd;
-
-	not_ready_counter = 0;
-	addr /= 2;	// modify address to fit with eeprom 256*16bit org
-	len &= ~1;	// align to 16bits
-
-	while (not_ready_counter < 0xFE) {
-
-		if(EEPROM_check()) {
-			not_ready_counter++;
-		}
-		else {
-			for (ecur = 0; ecur < (len / 2); ecur++) {
-				cmd = (uint32_t) (EEP_START_BIT | EEP_WRITE_ENABLE);   // perhaps this could be outside the loop
-				EEPROM_TX_bytes(cmd, 2);
-
-				cmd = (uint32_t) (EEP_START_BIT | EEP_WRITE);
-				cmd	|= (uint32_t) (addr << 16);
-				cmd |= (uint32_t) (data[ecur * 2] << 8);
-				cmd |= (uint32_t) (data[(ecur * 2) + 1]);
-				EEPROM_TX_bytes(cmd, 4);
-
-				delay(7000);  // allow time for write (5ms)
-				addr++;
-			}
-
-			cmd = (uint32_t) (EEP_START_BIT | EEP_WRITE_DISABLE);
-			EEPROM_TX_bytes(cmd, 2);
-
-			return 0;
-
-		}
-
-	}
-
-	return 1;
-
-}
-*/
 /* dump command processor, called from cmd_loop.
  * args[0] : address space (0: EEPROM, 1: ROM)
  * args[1,2] : # of 32-byte blocks
@@ -1050,11 +1080,27 @@ void cmd_loop(void) {
 
 	die();
 }
+#endif
+
+/***********************************************
+*
+*	CAN / ISO15765 kernel functions
+*
+*
+*
+*
+*
+*
+*
+***********************************************/
 
 #ifndef KLINE
 
-static u8 flashbuffer[128], counter8byteblock;
-static u32 counter128byteblock, flashaddr, num128byteblocks;
+static u8 flashbuffer[flashblocksize];
+static u8 counter8byteblock;
+static u32 counter128byteblock;
+static u32 flashaddr;
+static u32 num128byteblocks;
 
 static void can_idle(unsigned us) {
 	u32 t0, tc, intv;
@@ -1099,14 +1145,14 @@ static void __attribute__ ((noinline)) eep_can_read16_sub(uint8_t addr, uint16_t
 
 }
 
- /* receives 8 bytes from CAN Channel 0 mailbox 0 into msg
-  *
-  * returns 0 if no data to receive
-  * returns 1 if success
-  * returns -1 if no unread message available
-  */
- static int can_rx8bytes(u8 *msg) {
-
+/* receives 8 bytes from CAN Channel 0 mailbox 0 into msg
+*
+* returns 0 if no data to receive
+* returns 1 if success
+* returns -1 if no unread message available
+*/
+static int can_rx8bytes(u8 *msg)
+{
     #ifdef ssmk
         #if defined SH7058
         	#if defined KLINE // For SH7058 K-Line models (pre MY07)
@@ -1211,87 +1257,85 @@ static void __attribute__ ((noinline)) eep_can_read16_sub(uint8_t addr, uint16_t
  }
 
 
- /* transmits 8 bytes from buf via CAN Channel 0 mailbox 1
-  *
-  *
-  *
-  *
-  */
- static void can_tx8bytes(const u8 *buf) {
+/* transmits 8 bytes from buf via CAN Channel 0 mailbox 1
+*
+*
+*
+*
+*/
+static void can_tx8bytes(const u8 *buf)
+{
+	#ifdef ssmk
+		#ifdef SH7058
+			// For SH7058 K-Line models (pre MY07)
+			#if defined CAN
+				while (NPK_CAN.TXPR0.BIT.MB1) { };
 
-    #ifdef ssmk
-        #ifdef SH7058
-            //#if defined KLINE // For SH7058 K-Line models (pre MY07)
-        		// Will be added later
-            #if defined CAN
-			    while (NPK_CAN.TXPR0.BIT.MB1) { };
+				NPK_CAN.TXACK0.WORD = 2;
+				memcpy((void *) &NPK_CAN.MB[1].MSG_DATA[0], buf, 8);
+				NPK_CAN.TXPR0.WORD = 2;
 
-			    NPK_CAN.TXACK0.WORD = 2;
-			    memcpy((void *) &NPK_CAN.MB[1].MSG_DATA[0], buf, 8);
-			    NPK_CAN.TXPR0.WORD = 2;
+				return;
+			#elif defined CAN_TP // For SH7058 iso15765 models (MY07+)
+				while (NPK_CAN.TXPR0.BIT.MB15) { };
 
-			    return;
-        	#elif defined CAN_TP // For SH7058 iso15765 models (MY07+)
-			    while (NPK_CAN.TXPR0.BIT.MB15) { };
+				NPK_CAN.TXACK0.WORD = 0x8000;
+				memcpy((void *) &NPK_CAN.MB[15].MSG_DATA[0], buf, 8);
+				NPK_CAN.TXPR0.WORD = 0x8000;
 
-			    NPK_CAN.TXACK0.WORD = 0x8000;
-			    memcpy((void *) &NPK_CAN.MB[15].MSG_DATA[0], buf, 8);
-			    NPK_CAN.TXPR0.WORD = 0x8000;
+				return;
+			#endif
+		#elif defined SH7058D_EURO4
+			#if defined CAN
+				while (NPK_CAN.TXPR0.BIT.MB1) { };
 
-			    return;
-	        #endif
-        #elif defined SH7058D_EURO4
-        	#if defined CAN
-			    while (NPK_CAN.TXPR0.BIT.MB1) { };
+				NPK_CAN.TXACK0.WORD = 2;
+				memcpy((void *) &NPK_CAN.MB[1].MSG_DATA[0], buf, 8);
+				NPK_CAN.TXPR0.WORD = 2;
 
-			    NPK_CAN.TXACK0.WORD = 2;
-			    memcpy((void *) &NPK_CAN.MB[1].MSG_DATA[0], buf, 8);
-			    NPK_CAN.TXPR0.WORD = 2;
+				return;
+			#elif defined CAN_TP
+				while (NPK_CAN.TXPR1.BIT.MB30) { };
 
-			    return;
-        	#elif defined CAN_TP
-			    while (NPK_CAN.TXPR1.BIT.MB30) { };
+				NPK_CAN.TXACK1.WORD = 0x4000;
+				memcpy((void *) &NPK_CAN.MB[30].MSG_DATA[0], buf, 8);
+				NPK_CAN.TXPR1.WORD = 0x4000;
 
-			    NPK_CAN.TXACK1.WORD = 0x4000;
-			    memcpy((void *) &NPK_CAN.MB[30].MSG_DATA[0], buf, 8);
-			    NPK_CAN.TXPR1.WORD = 0x4000;
+				return;
+			#endif
+		#elif defined SH7059D_EURO5
+			#if defined CAN
+				while (NPK_CAN.TXPR0.BIT.MB1) { };
 
-			    return;
-	        #endif
-        #elif defined SH7059D_EURO5
-        	#if defined CAN
-			    while (NPK_CAN.TXPR0.BIT.MB1) { };
+				NPK_CAN.TXACK0.WORD = 2;
+				memcpy((void *) &NPK_CAN.MB[1].MSG_DATA[0], buf, 8);
+				NPK_CAN.TXPR0.WORD = 2;
 
-			    NPK_CAN.TXACK0.WORD = 2;
-			    memcpy((void *) &NPK_CAN.MB[1].MSG_DATA[0], buf, 8);
-			    NPK_CAN.TXPR0.WORD = 2;
+				return;
+			#elif defined CAN_TP
+				while (NPK_CAN.TXPR1.BIT.MB30) { };
 
-			    return;
-        	#elif defined CAN_TP
-                while (NPK_CAN.TXPR1.BIT.MB30) { };
+				NPK_CAN.TXACK1.WORD = 0x4000;
+				memcpy((void *) &NPK_CAN.MB[30].MSG_DATA[0], buf, 8);
+				NPK_CAN.TXPR1.WORD = 0x4000;
 
-                NPK_CAN.TXACK1.WORD = 0x4000;
-                memcpy((void *) &NPK_CAN.MB[30].MSG_DATA[0], buf, 8);
-                NPK_CAN.TXPR1.WORD = 0x4000;
+				return;
+			#endif
+		#elif defined SH7055
+			#if defined CAN
+				while (NPK_CAN.TXPR.BIT.MB1) { };
 
-                return;
-            #endif
-        #elif defined SH7055
-            #if defined CAN
-                while (NPK_CAN.TXPR.BIT.MB1) { };
+				NPK_CAN.TXACK.WORD = 0x0200;
+				memcpy((void *) &NPK_CAN.MD[1][0], buf, 8);
+				NPK_CAN.TXPR.WORD = 0x0200;
 
-                NPK_CAN.TXACK.WORD = 0x0200;
-                memcpy((void *) &NPK_CAN.MD[1][0], buf, 8);
-                NPK_CAN.TXPR.WORD = 0x0200;
-
-                return;
-            #endif
-        #endif
+				return;
+			#endif
+		#endif
+	#endif
+	#ifndef ssmk
+		u8 *buf_temp = buf;
     #endif
-    #ifndef ssmk
-                u8 *buf_temp = buf;
-    #endif
-
  }
 
 
@@ -1390,7 +1434,8 @@ static void can_cmd_flash_init(u8 *msg) {
  	u8 i;
 
 	// this is probably faster than memcpy
-	for (i = 0; i < 8; i++) flashbuffer[(8 * counter8byteblock) + i] = msg[i];
+	for (i = 0; i < 8; i++)
+		flashbuffer[(8 * counter8byteblock) + i] = msg[i];
 
  }
 
@@ -1470,41 +1515,90 @@ static void can_cmd_flash_init(u8 *msg) {
  *
  *
  */
-static void can_cmd_ecuid(u8 *msg) {
+static void can_cmd_ecuid(u8 *msg)
+{
+	u8 len = sizeof(npk_ver_string) - 1;
+	u8 msgindex = 0;
+	u8 txindex = 2;
 
-    u8 len = sizeof(npk_ver_string) - 1;
-    //u8 msglen = 0;
-    u8 msgindex = 0;
-    u8 txindex = 2;
+ 	#if defined CAN_TP // For SH7058 iso15765 models (MY07+)
+	bool first_frame = true;
+	u8 msglen = len;
+	u8 frame_index = 0;
 
-    while (len)
-    {
-	    txbuf[0] = 0x7A;
-	    txbuf[1] = (msg[1] & 0xF8) | 0x06;
-	    txbuf[2] = 0x20;
-	    txbuf[3] = 0x20;
-	    txbuf[4] = 0x20;
-	    txbuf[5] = 0x20;
-	    txbuf[6] = 0x20;
-	    txbuf[7] = 0x20;
+	if (msg[0]) {} // just to keep compiler happy
+	
+	while (len)
+	{
+		if (first_frame) {
+			txbuf[0] = 0x10;
+			txbuf[1] = msglen;
+		}
+		else {
+			txbuf[0] = 0x20 | frame_index;
+			txbuf[1] = 0x20;
+		}
+		txbuf[2] = 0x20;
+		txbuf[3] = 0x20;
+		txbuf[4] = 0x20;
+		txbuf[5] = 0x20;
+		txbuf[6] = 0x20;
+		txbuf[7] = 0x20;
 
-        while (len)
-        {
-        	txbuf[txindex] = npk_ver_string[msgindex];
+		while (len)
+		{
+			txbuf[txindex] = npk_ver_string[msgindex];
 
-            txindex++;
-            if (txindex > 7)
-                txindex = 2;
-            msgindex++;
-            len--;
+			txindex++;
+			if (txindex > 7)
+				txindex = 1;
+			msgindex++;
+			len--;
 
-            if (msgindex % 6 == 0 || (txindex < 7 && len == 0))
-            	break;
-        }
-      	can_tx8bytes(txbuf);
-    }
+			if (txindex == 1 || (txindex < 7 && len == 0))
+				break;
+		}
 
+		first_frame = false;
+		frame_index++;
+
+		if (frame_index > 15)
+			frame_index = 0;
+		can_tx8bytes(txbuf);
+		delay(5);
+	}
 	return;
+	#endif
+	
+	#ifndef CAN_TP
+	while (len)
+	{
+		txbuf[0] = 0x7A;
+		txbuf[1] = (msg[1] & 0xF8) | 0x06;
+		txbuf[2] = 0x20;
+		txbuf[3] = 0x20;
+		txbuf[4] = 0x20;
+		txbuf[5] = 0x20;
+		txbuf[6] = 0x20;
+		txbuf[7] = 0x20;
+
+		while (len)
+		{
+			txbuf[txindex] = npk_ver_string[msgindex];
+
+			txindex++;
+			if (txindex > 7)
+				txindex = 2;
+			msgindex++;
+			len--;
+
+			if (msgindex % 6 == 0 || (txindex < 7 && len == 0))
+		        break;
+		}
+		can_tx8bytes(txbuf);
+	}
+	return;
+	#endif
 }
 
 /* checksum command processor, 0xD0 command, called from cmd_loop.
@@ -1622,16 +1716,17 @@ static void can_cmd_dump_eeprom(u8 *msg) {
  * ex.: "7A DE 00 10 00 00 00 00" dumps 1MB of ROM@ 0x0
  *
  */
-static void can_cmd_dump(u8 *msg) {
-
+static void can_cmd_dump(u8 *msg)
+{
 	u32 addr;
 	u32 len;
 
 	if((msg[1] & 0x07) != 6) {
 		memcpy(txbuf, msg, 8);
-		txbuf[0] = 0x7F;
-		txbuf[1] = (msg[1] & 0xF8) | 0x01;
-		txbuf[2] = 0x30;  // general format error
+		txbuf[0] = 0x00 | 0x07;
+		txbuf[1] = 0x7A;
+		txbuf[2] = (msg[1] & 0xF8) | 0x01;
+		txbuf[3] = 0x30;  // general format error
 		can_tx8bytes(txbuf);
 		return;
 	}
@@ -1639,16 +1734,85 @@ static void can_cmd_dump(u8 *msg) {
 	len = ((msg[2] << 24) | (msg[3] << 16) | (msg[4] << 8) | 0x00);
 	addr = ((msg[5] << 24) | (msg[6] << 16) | (msg[7] << 8) | 0x00);
 
-	txbuf[0] = 0x7A;
-	txbuf[1] = (msg[1] & 0xF8);
+	txbuf[0] = 0x10;
+	txbuf[1] = 0x08;
+	txbuf[2] = msg[0];
+	txbuf[3] = (msg[1] & 0xF8);
+	txbuf[4] = msg[2];
+	txbuf[5] = msg[3];
+	txbuf[6] = msg[4];
+	txbuf[7] = msg[5];
+	can_tx8bytes(txbuf);
+	txbuf[0] = 0x20 | 0x01;
+	txbuf[1] = msg[6];
+	txbuf[2] = msg[7];
 	can_tx8bytes(txbuf);
 	can_idle(750);
+
+ 	#if defined CAN_TP // For SH7058 iso15765 models (MY07+)
+	static u8 rx8bytes[8];
+	bool first_frame = true;
+	u8 bytes_to_send = 0;
+	u8 txindex = 2;
+	u8 framesize = 8;
+	u8 frame_index = 0;
+	u8 frame_delay = 1;
+	
+	while (len)
+	{
+		if (!first_frame)
+		{
+			delay(1);
+			int rv = can_rx8bytes(rx8bytes);
+			if(rv == 1) // 0 = no data, 1 = data, -1 no unread message available
+			{
+				if ((rx8bytes[0] & 0xf0) == 0x30)
+				{
+					txbuf[0] = rx8bytes[0];
+					txbuf[1] = rx8bytes[1];
+					txbuf[2] = rx8bytes[2];
+					can_tx8bytes(txbuf);
+					frame_delay = rx8bytes[2];
+				}
+			}
+		}
+		if (first_frame) {
+			txbuf[0] = 0x10 | ((len >> 8) & 0x0f);
+			txbuf[1] = (len & 0xff);
+			txindex = 2;
+		}
+		else {
+			txbuf[0] = 0x20 | frame_index;
+			txindex = 1;
+		}
+
+		bytes_to_send = framesize - txindex;
+		if (len < bytes_to_send)
+			bytes_to_send = len;
+
+		memcpy(&txbuf[txindex], (void *) addr, bytes_to_send);
+		len -= bytes_to_send;
+		addr += bytes_to_send;
+		txindex = 1;
+
+		first_frame = false;
+		frame_index++;
+
+		if (frame_index > 15)
+			frame_index = 0;
+		can_tx8bytes(txbuf);
+		delay(frame_delay);
+	}
+	return;
+	#endif
 
 	while (len) {
 		u32 pktlen;
 		pktlen = len;
-		if (pktlen > 8) pktlen = 8;
-		//txbuf[1] = (msg[1] & 0xF8) | pktlen;
+		if (pktlen > 8)
+			pktlen = 8;
+		
+		//txbuf[0] = 0x01 | pktlen;
 		//memcpy(&txbuf[2], (void *) addr, pktlen);
 		memcpy(txbuf, (void *) addr, pktlen);
 		can_tx8bytes(txbuf);
@@ -1662,109 +1826,188 @@ static void can_cmd_dump(u8 *msg) {
 }
 
 
-void can_cmd_loop(void) {
-
+void can_cmd_loop(void)
+{
 	u8 cmd;
-	static u8 currentmsg[8];
+	static u8 rx8bytes[8];
+	static u8 currentmsg[256];
 	bool loadingblocks = false;
 	counter8byteblock = 0;
-
+	
 	while (1) {
+		int rv = can_rx8bytes(rx8bytes);
+		if(rv == 0) // 0 = no data, 1 = data, -1 no unread message available
+			continue;
 
-		int rv = can_rx8bytes(currentmsg);
-		if(rv == 0) continue;
-
-		if(rv == -1) {
-			txbuf[0] = 0x7F;
-			txbuf[1] = (currentmsg[1] & 0xF8) | 0x01;
-			txbuf[2] = 0x36;   // unread message error
+		if(rv == -1)
+		{
+			txbuf[0] = 0x00 | 0x07;
+			txbuf[1] = 0x7F;
+			txbuf[2] = rx8bytes[2];
+			txbuf[3] = rx8bytes[3];
+			txbuf[4] = 0x36;   // no unread message available error
 			can_tx8bytes(txbuf);
 			continue;
 		}
 
-		if (loadingblocks) {
+		#if defined CAN_TP // iso15765 models
+		int data_length = 0;
+		u8 frame_index = 0;
 
-			can_cmd_load8bytes(currentmsg);
+		if ((rx8bytes[0] & 0xf0) == 0x00)
+		{
+			memcpy(currentmsg, &rx8bytes[1], 7);
+			//u16 msglength = rx8bytes[0] & 0x0f;
+			data_length = rx8bytes[0] & 0x0f;
+		}
+		else if ((rx8bytes[0] & 0xf0) == 0x10)
+		{
+			memcpy(currentmsg, &rx8bytes[2], 6);
+			u8 msgindex = 6;
+			u8 msglength = 0;
+			//u16 msglength = ((rx8bytes[0] & 0x0f) << 8) + rx8bytes[1];
+			data_length = ((rx8bytes[0] & 0x0f) << 8) + rx8bytes[1] - 6;
+			txbuf[0] = 0x30;
+			txbuf[1] = 0x00;
+			txbuf[2] = 0x00;
+			can_tx8bytes(txbuf);
+			while (data_length > 0)
+			{
+				delay(1);
+				rv = can_rx8bytes(rx8bytes);
+				if(rv == 0) // 0 = no data, 1 = data, -1 no unread message available
+					continue;
+
+				if ((rx8bytes[0] & 0xf0) == 0x20)
+				{
+					msglength = 7;
+					if (data_length < 7)
+						msglength = data_length;
+					memcpy(&currentmsg[msgindex], &rx8bytes[1], msglength);
+					msgindex+=msglength;
+					data_length -= msglength;
+				}
+				if ((rx8bytes[0] & 0xf0) == 0x30)
+				{
+					memcpy(txbuf, rx8bytes, 8);
+					can_tx8bytes(txbuf);
+				}
+			}
+		}
+		else if ((rx8bytes[0] & 0xf0) == 0x20)
+		{
+			txbuf[0] = 0x00 | 0x07;
+			txbuf[1] = 0x7F;
+			txbuf[2] = rx8bytes[0];
+			txbuf[3] = rx8bytes[1];
+			txbuf[4] = rx8bytes[2];
+			txbuf[5] = rx8bytes[3];
+			txbuf[6] = rx8bytes[4];
+			txbuf[7] = rx8bytes[5];
+			memcpy(txbuf, rx8bytes, 8);
+			can_tx8bytes(txbuf);
+			continue;
+		}
+		else if ((rx8bytes[0] & 0xf0) == 0x30)
+		{
+			txbuf[0] = 0x00 | 0x07;
+			txbuf[1] = 0x7F;
+			txbuf[2] = rx8bytes[0];
+			txbuf[3] = rx8bytes[1];
+			txbuf[4] = rx8bytes[2];
+			txbuf[5] = rx8bytes[3];
+			txbuf[6] = rx8bytes[4];
+			txbuf[7] = rx8bytes[5];
+			memcpy(txbuf, rx8bytes, 8);
+			can_tx8bytes(txbuf);
+			continue;
+		}
+		//else if ((rx8bytes[0] & 0xf0) == 0x20) {
+		//	frame_index = rx8bytes[0] & 0x0f;
+		//}
+		//data_length++;
+		frame_index++;
+		#endif
+
+		if (loadingblocks)
+		{
+			can_cmd_load8bytes(rx8bytes);
 			counter8byteblock++;
-			if (counter8byteblock > 15) {
-
+			if (counter8byteblock > 15)
+			{
 				counter8byteblock = 0;
 				loadingblocks = false;
 			}
-
 		}
-        else if(currentmsg[0] == SID_CAN_START_COMM) {
-
+		else if(currentmsg[0] == SID_CAN_START_COMM)
+		{
 			cmd = currentmsg[1] & 0xF8;
 
-			switch(cmd) {
-                case SID_CAN_RECUID: // 0xA0 Request kernel ID
-				    can_cmd_ecuid(currentmsg);
-				    break;
+			switch(cmd)
+			{
+				case SID_CAN_RECUID: // 0xA0 Request kernel ID
+					can_cmd_ecuid(currentmsg);
+					break;
 
-                case SID_CAN_DUMP_EEPROM: // 0xB8 Dump eeprom
-				    can_cmd_dump_eeprom(currentmsg);
-				    break;
+				case SID_CAN_DUMP_EEPROM: // 0xB8 Dump eeprom
+					can_cmd_dump_eeprom(currentmsg);
+					break;
 
-                case SID_CAN_CKS: // 0xD0 Request crc32 checksum
+				case SID_CAN_CKS: // 0xD0 Request crc32 checksum
 					can_cmd_cks(currentmsg);
 					break;
 
-                case SID_CAN_DUMP: // 0xD8 Dump ROM
+				case SID_CAN_DUMP: // 0xD8 Dump ROM
 					can_cmd_dump(currentmsg);
 					break;
 
-                case SID_CAN_FLASH_INIT: // 0xE0 Init flash write
+				case SID_CAN_FLASH_INIT: // 0xE0 Init flash write
 					PFC.PDIOR.WORD |= 0x0100;
 					can_cmd_flash_init(currentmsg);
 					break;
 
-                case SID_CAN_FLASH_ERASE: // 0xF0 Erase flash block
+				case SID_CAN_FLASH_ERASE: // 0xF0 Erase flash block
 					can_cmd_erase_block(currentmsg);
 					loadingblocks = true;
 					break;
 
-                case SID_CAN_FLASH_WRITE: // 0XF8 Write 128 bytes to flash
+				case SID_CAN_FLASH_WRITE: // 0XF8 Write 128 bytes to flash
 					can_cmd_flash_128bytes(currentmsg);
 					counter128byteblock++;
 					if (counter128byteblock < num128byteblocks)
-                        loadingblocks = true;
+						loadingblocks = true;
 					break;
 
 				default:
-					txbuf[0] = 0x7F;
-					txbuf[1] = (currentmsg[1] & 0xF8) | 0x01;
-					txbuf[2] = 0x34;   // unrecognised 0x7A command
+					txbuf[0] = 0x00 | 0x07;
+					txbuf[1] = 0x7F;
+					txbuf[2] = (currentmsg[1] & 0xF8) | 0x01;
+					txbuf[3] = 0x34;   // unrecognised 0x7A command
 					can_tx8bytes(txbuf);
 					break;
-
 			}
-
 		}
-		else {
-
-			if ((currentmsg[0] == 0xFF) && (currentmsg[1] == 0xC8)) {
-
-				txbuf[0] = 0xFF;
-				txbuf[1] = 0xC8;
+		else
+		{
+			if ((currentmsg[0] == 0xFF) && (currentmsg[1] == 0xC8))
+			{
+				txbuf[0] = 0x00 | 0x07;
+				txbuf[1] = 0xFF;
+				txbuf[2] = 0xC8;
 				can_tx8bytes(txbuf);
 				die();
-
 			}
 
-			txbuf[0] = 0x7F;
-			txbuf[1] = (currentmsg[1] & 0xF8) | 0x01;
-			txbuf[2] = 0x35;    // unrecognised command (non 0x7A)
+			txbuf[0] = 0x00 | 0x07;
+			txbuf[1] = 0x7F;
+			txbuf[2] = (currentmsg[1] & 0xF8) | 0x01;
+			txbuf[3] = 0x35;    // unrecognised command (non 0x7A)
 			can_tx8bytes(txbuf);
-
 		}
-
+		memset(currentmsg, 0, 256);
 	}
-
 	die();
-
 	return;
-
 }
 
 #endif

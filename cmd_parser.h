@@ -19,13 +19,6 @@
 
 #include "stypes.h"
 
-
 void cmd_init(u8 brrdiv);
-//void can_init(unsigned int param_1,short param_2,unsigned short param_3,unsigned short param_4,unsigned int param_5,char param_6,unsigned int mailbox);
-
-//static void can_tx8bytes(const u8 *buf);
-//static void can_idle(unsigned us);
-
 void cmd_loop(void);
-
 void can_cmd_loop(void);

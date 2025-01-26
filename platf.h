@@ -25,6 +25,8 @@
 
 #include <stdbool.h>
 
+#define flashblocksize 0x80
+
 /****** mfg- and mcu-specific defines ******
 *
 * RAM_MIN, RAM_MAX : whole RAM area

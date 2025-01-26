@@ -156,7 +156,6 @@ enum internal_errcodes {
 #define FLMCR_E	0x02
 #define FLMCR_P	0x01
 
-
 const u32 fblocks[] = {
 	0x00000000,
 	0x00001000,
@@ -338,14 +337,14 @@ uint32_t platf_flash_eb(unsigned blockno) {
 
 /*********** Write ***********/
 
-/** Copy 128-byte chunk + apply write pulse for tsp=10/30/200us as specified
+/** Copy flashblocksize-byte chunk + apply write pulse for tsp=10/30/200us as specified
  */
 static void writepulse(volatile u8 *dest, u8 *src, unsigned tsp) {
 	unsigned uim;
 	u32 cur;
 
 	//can't use memcpy because these must be byte transfers
-	for (cur = 0; cur < 128; cur++) {
+	for (cur = 0; cur < flashblocksize; cur++) {
 		dest[cur] = src[cur];
 	}
 
@@ -371,10 +370,10 @@ static void writepulse(volatile u8 *dest, u8 *src, unsigned tsp) {
 /** ret 0 if ok, NRC if error
  * assumes params are ok, and that block was already erased
  */
-static u32 flash_write128(u32 dest, u32 src_unaligned) {
-	u8 src[128] __attribute ((aligned (4)));	// aligned copy of desired data
-	u8 reprog[128] __attribute ((aligned (4)));	// retry / reprogram data
-	u8 addit[128] __attribute ((aligned (4)));	// overwrite / additional data
+static u32 flash_write(u32 dest, u32 src_unaligned) {
+	u8 src[flashblocksize] __attribute ((aligned (4)));	// aligned copy of desired data
+	u8 reprog[flashblocksize] __attribute ((aligned (4)));	// retry / reprogram data
+	u8 addit[flashblocksize] __attribute ((aligned (4)));	// overwrite / additional data
 
 	unsigned n;
 	bool m;
@@ -390,8 +389,8 @@ static u32 flash_write128(u32 dest, u32 src_unaligned) {
 		return PF_ERROR;
 	}
 
-	memcpy(src, (void *) src_unaligned, 128);
-	memcpy(reprog, (void *) src, 128);
+	memcpy(src, (void *) src_unaligned, flashblocksize);
+	memcpy(reprog, (void *) src, flashblocksize);
 
 	sweset();
 	WDT.WRITE.TCSR = WDT_TCSR_STOP;
@@ -414,7 +413,7 @@ static u32 flash_write128(u32 dest, u32 src_unaligned) {
 		*pFLMCR |= FLMCR_PV;
 		waitn(TSPV);
 
-		for (cur = 0; cur < 128; cur += 4) {
+		for (cur = 0; cur < flashblocksize; cur += 4) {
 			u32 verifdata;
 			u32 srcdata;
 			u32 just_written;
@@ -474,26 +473,26 @@ badexit:
 }
 
 
-uint32_t platf_flash_wb(uint32_t dest, uint32_t src, uint32_t len) {
-
+uint32_t platf_flash_wb(uint32_t dest, uint32_t src, uint32_t len)
+{
 	if (dest > FL_MAXROM) return PFWB_OOB;
-	if (dest & 0x7F) return PFWB_MISALIGNED;	//dest not aligned on 128B boundary
-	if (len & 0x7F) return PFWB_LEN;	//must be multiple of 128B too
+	if (dest & (flashblocksize-1)) return PFWB_MISALIGNED;	//dest not aligned on flashblocksize bytes boundary
+	if (len & (flashblocksize-1)) return PFWB_LEN;	//must be multiple of flashblocksize bytes too
 
 	if (!reflash_enabled) return 0;	//pretend success
 
 	while (len) {
 		uint32_t rv = 0;
 
-		rv = flash_write128(dest, src);
+		rv = flash_write(dest, src);
 
 		if (rv) {
 			return (rv & 0x06) | PF_FPFR_BASE;	//tweak into valid NRC
 		}
 
-		dest += 128;
-		src += 128;
-		len -= 128;
+		dest += flashblocksize;
+		src += flashblocksize;
+		len -= flashblocksize;
 	}
 	return 0;
 }
@@ -531,7 +530,8 @@ bool platf_flash_init(u8 *err) {
 		//return 0;
 	}
 	if (errval) {
-		set_lasterr(errval);
+		//set_lasterr(errval);
+		*err = errval;
 		return 0;
 	}
 

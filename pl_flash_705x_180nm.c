@@ -45,12 +45,9 @@
  * - on Nissan : kernel @ 0xFFFF8100, this leaves ~16k for both kernel + stack
  */
 
-
 /* Select area in which to download the erase + write microcode.
  * skip 00 and 01 in case someone wants to use RAMER at some point
  */
-
-
 
 #if defined(SH7058)
 // 7058S needs 3kB for each microcode (vs 2k for 7055_18 / 7058).
@@ -388,7 +385,7 @@ uint32_t platf_flash_eb(unsigned blockno) {
 /** ret 0 if ok, FPFR value if failed
  * assumes params are ok, and that block was already erased
  */
-static uint32_t flash_write128(uint32_t dest, uint32_t src) {
+static uint32_t flash_write(uint32_t dest, uint32_t src) {
 	uint32_t FPFR;
 
 	FLASH.FKEY = 0x5A;
@@ -401,25 +398,25 @@ static uint32_t flash_write128(uint32_t dest, uint32_t src) {
 uint32_t platf_flash_wb(uint32_t dest, uint32_t src, uint32_t len) {
 
 	if (dest > FL_MAXROM) return PFWB_OOB;
-	if (dest & 0x7F) return PFWB_MISALIGNED;	//dest not aligned on 128B boundary
-	if (len & 0x7F) return PFWB_LEN;	//must be multiple of 128B too
+	if (dest & flashblocksize) return PFWB_MISALIGNED;	//dest not aligned on flashblocksize bytes boundary
+	if (len & flashblocksize) return PFWB_LEN;	//must be multiple of flashblocksize bytes too
 
 	if (!reflash_enabled) return 0;	//pretend success
 
 	while (len) {
 		uint32_t rv = 0;
 
-		rv = flash_write128(dest, src);
+		rv = flash_write(dest, src);
 
 		if (rv) {
 			return (rv & 0x06) | PF_FPFR_BASE;	//tweak into valid NRC
 		}
 
-		if (memcmp((void *)dest, (void *)src, 128) != 0) return PFWB_VERIFAIL;
+		if (memcmp((void *)dest, (void *)src, flashblocksize) != 0) return PFWB_VERIFAIL;
 
-		dest += 128;
-		src += 128;
-		len -= 128;
+		dest += flashblocksize;
+		src += flashblocksize;
+		len -= flashblocksize;
 	}
 	return 0;
 }

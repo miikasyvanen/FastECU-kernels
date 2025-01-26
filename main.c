@@ -35,8 +35,8 @@ int main(void) {
 	/* and lower prio mask to let WDT run */
 	set_imask(0x07);
 
-	cmd_init(SCI_DEFAULTDIV);
 #if defined(KLINE)
+	cmd_init(SCI_DEFAULTDIV);
 	cmd_loop();
 #elif defined(CAN)
 	can_cmd_loop();
