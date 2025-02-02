@@ -24,8 +24,13 @@
 
 
 #include <stdbool.h>
+#include "stypes.h"
 
-#define flashblocksize 0x80
+#define flashbuffersize 0x1000
+#define flashchunksize 0x80
+#define flashmessagesize 0x200
+
+u8 flashbuffer[flashbuffersize];
 
 /****** mfg- and mcu-specific defines ******
 *
@@ -45,77 +50,39 @@
 
 
 
-#if defined(npk)
-	#define WDT_MAXCNT 1250
-/* Nissan only: RAMJUMP_PRELOAD_META : pre-ramjump metadata address */
+#if defined(SH7058)
+    #define WDT_MAXCNT 2060 //aim for 6.6ms , although it probably works at 2ms anyway
+    //#define WDT_MAXCNT 4125 //aim for 6.6ms , although it probably works at 2ms anyway
+    #include "reg_defines/7055_7058_180nm.h"
+    #define RAM_MIN	0xFFFF0000
+    #define RAM_MAX 	0xFFFFBFFF
+    #define NPK_SCI SCI2
 
-	#if defined(SH7058)
-		#include "reg_defines/7055_7058_180nm.h"
-		#define RAM_MIN	0xFFFF0000
-		#define RAM_MAX 	0xFFFFBFFF
-		#define RAMJUMP_PRELOAD_META 0xffff8000
-		#define NPK_SCI SCI1
+#elif defined(SH7059D_EURO5)
+    #define WDT_MAXCNT 2060 //aim for 6.6ms , although it probably works at 2ms anyway
+    //#define WDT_MAXCNT 4125 //aim for 6.6ms , although it probably works at 2ms anyway
+    #include "reg_defines/7055_7058_180nm.h"
+    #define RAM_MIN	0xFFFE8000
+    #define RAM_MAX 	0xFFFFBFFF
+    #define NPK_SCI SCI2
 
-	#elif defined(SH7055_18)
-		#include "reg_defines/7055_7058_180nm.h"
-		#define RAM_MIN	0xFFFF6000
-		#define RAM_MAX	0xFFFFDFFF
-		#define RAMJUMP_PRELOAD_META 0xffff8000
-		#define NPK_SCI SCI1
+#elif defined(SH7058D_EURO4)
+    #define WDT_MAXCNT 2060 //aim for 6.6ms , although it probably works at 2ms anyway
+    //#define WDT_MAXCNT 4125 //aim for 6.6ms , although it probably works at 2ms anyway
+    #include "reg_defines/7055_7058_180nm.h"
+    #define RAM_MIN	0xFFFF0000
+    #define RAM_MAX 	0xFFFFBFFF
+    #define NPK_SCI SCI2
 
-	#elif defined(SH7055_35)
-		#include "reg_defines/7055_350nm.h"
-		#define RAM_MIN	0xFFFF6000
-		#define RAM_MAX	0xFFFFDFFF
-		#define RAMJUMP_PRELOAD_META 0xffff8000
-		#define NPK_SCI SCI1
+#elif defined(SH7055)
+    #define WDT_MAXCNT 2060 //aim for 3.3ms
+    #include "reg_defines/7055_350nm.h"
+    #define RAM_MIN	0xFFFF6000
+    #define RAM_MAX	0xFFFFDFFF
+    #define NPK_SCI SCI2
 
-	#elif defined(SH7051)
-		#include "reg_defines/7051.h"
-		#define RAM_MIN	0xFFFFD800
-		#define RAM_MAX	0xFFFFFFFF
-		#define RAMJUMP_PRELOAD_META 0xffffD800
-		#define NPK_SCI SCI2
-
-	#else
-		#error No target specified !
-	#endif
-
-#elif defined(ssmk)
-	#if defined(SH7058)
-		#define WDT_MAXCNT 2060 //aim for 6.6ms , although it probably works at 2ms anyway
-		//#define WDT_MAXCNT 4125 //aim for 6.6ms , although it probably works at 2ms anyway
-		#include "reg_defines/7055_7058_180nm.h"
-		#define RAM_MIN	0xFFFF0000
-		#define RAM_MAX 	0xFFFFBFFF
-		#define NPK_SCI SCI2
-
-    #elif defined(SH7059D_EURO5)
-        #define WDT_MAXCNT 2060 //aim for 6.6ms , although it probably works at 2ms anyway
-        //#define WDT_MAXCNT 4125 //aim for 6.6ms , although it probably works at 2ms anyway
-        #include "reg_defines/7055_7058_180nm.h"
-        #define RAM_MIN	0xFFFE8000
-        #define RAM_MAX 	0xFFFFBFFF
-        #define NPK_SCI SCI2
-
-    #elif defined(SH7058D_EURO4)
-        #define WDT_MAXCNT 2060 //aim for 6.6ms , although it probably works at 2ms anyway
-        //#define WDT_MAXCNT 4125 //aim for 6.6ms , although it probably works at 2ms anyway
-        #include "reg_defines/7055_7058_180nm.h"
-        #define RAM_MIN	0xFFFF0000
-        #define RAM_MAX 	0xFFFFBFFF
-        #define NPK_SCI SCI2
-
-    #elif defined(SH7055)
-		#define WDT_MAXCNT 2060 //aim for 3.3ms
-		#include "reg_defines/7055_350nm.h"
-		#define RAM_MIN	0xFFFF6000
-		#define RAM_MAX	0xFFFFDFFF
-		#define NPK_SCI SCI2
-
-	#else
-		#error invalid target for ssmk
-	#endif
+#else
+    #error invalid target for ssmk
 #endif
 
 #define NPK_CAN HCAN0
@@ -135,6 +102,12 @@
 bool platf_flash_init(uint8_t *err);
 
 
+/** Disable modification (erase/write) to flash.
+ *
+ * Called this to set the actual calls to erase / write flash to be skipped
+ */
+void platf_flash_protect(void);
+
 /** Enable modification (erase/write) to flash.
  *
  * If this is not called after platf_flash_init(), the actual calls to erase / write flash are skipped
@@ -145,7 +118,7 @@ void platf_flash_unprotect(void);
  *
  * ret 0 if ok
  */
-uint32_t platf_flash_eb(unsigned blockno);
+uint32_t platf_flash_eb(u32 addr);
 
 /** Write block of data. len must be multiple of SIDFL_WB_DLEN
  *

@@ -37,25 +37,25 @@
  */
 #if defined(SH7059D_EURO5)
 	#if defined(CAN)
-		static const u8 npk_ver_string[] = "FastECU Subaru SH7059 CAN EURO5 Diesel CAN Kernel v1.00";
+        static const u8 kernel_id_string[] = "FastECU Subaru SH7059 CAN EURO5 Diesel CAN Kernel v1.00";
 	#elif defined(CAN_TP)
-		static const u8 npk_ver_string[] = "FastECU Subaru SH7059 CAN EURO5 Diesel iso15765 Kernel v1.00";
+        static const u8 kernel_id_string[] = "FastECU Subaru SH7059 CAN EURO5 Diesel iso15765 Kernel v1.00";
 	#endif
 #elif defined(SH7058D_EURO4)
-	static const u8 npk_ver_string[] = "FastECU Subaru SH7058 CAN EURO4 Diesel Kernel v1.00";
+    static const u8 kernel_id_string[] = "FastECU Subaru SH7058 CAN EURO4 Diesel Kernel v1.00";
 #elif defined(SH7058)
 	#if defined(KLINE)
-		static const u8 npk_ver_string[] = "FastECU Subaru SH7058 K-Line Kernel v1.00";
+        static const u8 kernel_id_string[] = "FastECU Subaru SH7058 K-Line Kernel v1.00";
 	#elif defined(CAN)
-		static const u8 npk_ver_string[] = "FastECU Subaru SH7058 CAN Kernel v1.00";
+        static const u8 kernel_id_string[] = "FastECU Subaru SH7058 CAN Kernel v1.00";
 	#elif defined(CAN_TP)
-		static const u8 npk_ver_string[] = "FastECU Subaru SH7058 iso15765 Kernel v1.00";
+        static const u8 kernel_id_string[] = "FastECU Subaru SH7058 iso15765 Kernel v1.00";
 	#endif
 #elif defined(SH7055)
 	#if defined(KLINE)
-		static const u8 npk_ver_string[] = "FastECU Subaru SH7055 K-Line Kernel v1.00";
+        static const u8 kernel_id_string[] = "FastECU Subaru SH7055 K-Line Kernel v1.00";
 	#elif defined(CAN)
-		static const u8 npk_ver_string[] = "FastECU Subaru SH7055 CAN Kernel v1.00";
+        static const u8 kernel_id_string[] = "FastECU Subaru SH7055 CAN Kernel v1.00";
 	#endif
 #endif
 
@@ -771,7 +771,8 @@ static void cmd_flash_utils(struct iso14230_msg *msg) {
 			rv = ISO_NRC_SFNS_IF;
 			goto exit_bad;
 		}
-		rv = platf_flash_eb(msg->data[2]);
+        u32 flashaddr = 0;
+        rv = platf_flash_eb(flashaddr); // THIS WAS BLOCKNO
 		if (rv) {
 			rv = (rv & 0xFF) | 0x80;	//make sure it's a valid extented NRC
 			goto exit_bad;
@@ -1028,7 +1029,7 @@ void cmd_loop(void) {
 				iso_clearmsg(&msg);
 				break;
 			case SID_RECUID:
-				iso_sendpkt(npk_ver_string, sizeof(npk_ver_string));
+                iso_sendpkt(kernel_id_string, sizeof(kernel_id_string));
 				iso_clearmsg(&msg);
 				break;
 			case SID_CONF:
@@ -1096,11 +1097,11 @@ void cmd_loop(void) {
 
 #ifndef KLINE
 
-static u8 flashbuffer[flashblocksize];
-static u8 counter8byteblock;
-static u32 counter128byteblock;
-static u32 flashaddr;
-static u32 num128byteblocks;
+#define datablocksize 0x210
+
+static u8 candatabuffer[datablocksize];
+static u32 flashaddr = 0;
+static u32 flashbuffercounter = 0;
 
 static void can_idle(unsigned us) {
 	u32 t0, tc, intv;
@@ -1338,6 +1339,75 @@ static void can_tx8bytes(const u8 *buf)
     #endif
  }
 
+static void can_cmd_max_msg_size(u8 *msg)
+{
+    u16 datalen = (msg[2] << 8) | msg[3];
+
+    if (datalen != 1)
+    {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = 0x30;  // general format error
+        can_send_message(candatabuffer, 3);
+        return;
+    }
+
+    candatabuffer[0] = msg[4] | 0x40;
+    candatabuffer[1] = (flashmessagesize >> 24) & 0xff;
+    candatabuffer[2] = (flashmessagesize >> 16) & 0xff;
+    candatabuffer[3] = (flashmessagesize >> 8) & 0xff;
+    candatabuffer[4] = flashmessagesize & 0xff;
+    can_send_message(candatabuffer, 5);
+
+    return;
+}
+
+static void can_cmd_max_blk_size(u8 *msg)
+{
+    u16 datalen = (msg[2] << 8) | msg[3];
+
+    if (datalen != 1)
+    {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = 0x30;  // general format error
+        can_send_message(candatabuffer, 3);
+        return;
+    }
+
+    candatabuffer[0] = msg[4] | 0x40;
+    candatabuffer[1] = (flashbuffersize >> 24) & 0xff;
+    candatabuffer[2] = (flashbuffersize >> 16) & 0xff;
+    candatabuffer[3] = (flashbuffersize >> 8) & 0xff;
+    candatabuffer[4] = flashbuffersize & 0xff;
+    can_send_message(candatabuffer, 5);
+
+    return;
+}
+
+static void can_cmd_get_programming_voltage(u8 *msg)
+{
+    u16 datalen = (msg[2] << 8) | msg[3];
+    u16 prog_voltage = 560;
+
+    if (datalen != 1)
+    {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = 0x30;  // general format error
+        can_send_message(candatabuffer, 3);
+        return;
+    }
+
+    candatabuffer[0] = msg[4] | 0x40;
+    candatabuffer[1] = (prog_voltage >> 8) & 0xff;
+    candatabuffer[2] = prog_voltage & 0xff;
+    candatabuffer[3] = (prog_voltage >> 8) & 0xff;
+    candatabuffer[4] = prog_voltage & 0xff;
+    can_send_message(candatabuffer, 5);
+
+    return;
+}
 
 /* flash initialisation, 0xE0 command, called from cmd_loop
  *
@@ -1345,39 +1415,45 @@ static void can_tx8bytes(const u8 *buf)
  *
  *
  */
-static void can_cmd_flash_init(u8 *msg) {
+static void can_cmd_flash_init(u8 *msg)
+{
+    u8 errval;
+    u16 datalen = (msg[2] << 8) | msg[3];
 
-	u8 errval;
+    if (datalen != 1)
+    {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = 0x30;  // general format error
+        can_send_message(candatabuffer, 3);
+        return;
+    }
 
-	if ((msg[1] & 0x07) != 1) {
-		memcpy(txbuf, msg, 8);
-		txbuf[0] = 0x7F;
-		txbuf[1] = (msg[1] & 0xF8) | 0x01;
-		txbuf[2] = 0x30;  // general format error
-		can_tx8bytes(txbuf);
-		return;
-	}
+    //if (msg[4] == SUB_KERNEL_FLASH_DISABLE)
+    //    PFC.PDIOR.WORD &= ~0x0100;
+    //else if (msg[4] == SUB_KERNEL_FLASH_ENABLE)
+        PFC.PDIOR.WORD |= 0x0100;
 
-	if (!platf_flash_init(&errval)) {
-		memcpy(txbuf, msg, 8);
-		txbuf[0] = 0x7F;
-		txbuf[1] = (msg[1] & 0xF8) | 0x01;
-		txbuf[2] = errval;
-		can_tx8bytes(txbuf);
-		return;
-	}
+    if (!platf_flash_init(&errval))
+    {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = errval;
+        can_send_message(candatabuffer, 3);
+        return;
+    }
 
-	if (msg[2] == 0xA5) platf_flash_unprotect();
+    if (msg[4] == SUB_KERNEL_FLASH_DISABLE)
+        platf_flash_protect();
+    else if (msg[4] == SUB_KERNEL_FLASH_ENABLE)
+        platf_flash_unprotect();
 
-	txbuf[0] = 0x7A;
-	txbuf[1] = (msg[1] & 0xF8) | 0x00;
-	can_tx8bytes(txbuf);
+    candatabuffer[0] = msg[4] | 0x40;
+    can_send_message(candatabuffer, 1);
 
-	//flashstate = FL_READY;
-
-	return;
-
+    return;
 }
+
 
 
 /* erase flash block, 0xF0 command, called from cmd_loop
@@ -1386,41 +1462,37 @@ static void can_cmd_flash_init(u8 *msg) {
  *
  *
  */
- static void can_cmd_erase_block(u8 *msg) {
+ static void can_cmd_erase_block(u8 *msg)
+{
+    u32 rv = 0;
+    u16 datalen = (msg[2] << 8) | msg[3];
 
-	u32 rv;
+    if (datalen != 5)
+    {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = 0x30;  // general format error
+        can_send_message(candatabuffer, 3);
+        return;
+    }
 
-	if ((msg[1] & 0x07) != 6) {
-		memcpy(txbuf, msg, 8);
-		txbuf[0] = 0x7F;
-		txbuf[1] = (msg[1] & 0xF8) | 0x01;
-		txbuf[2] = 0x30;  // general format error
-		can_tx8bytes(txbuf);
-		return;
+    flashaddr = ((msg[5] << 24) | (msg[6] << 16) | (msg[7] << 8) | msg[8]);
+
+    rv = platf_flash_eb(flashaddr);
+
+    if(rv)
+    {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = rv;
+        can_send_message(candatabuffer, 3);
+        return;
 	}
 
-	memcpy(txbuf, msg, 8);
-	flashaddr = ((msg[3] << 24) | (msg[4] << 16) | (msg[5] << 8) | 0x00);
-	num128byteblocks = ((msg[6] << 8) | msg[7]);
-	counter8byteblock = 0;
-	counter128byteblock = 0;
-
-	rv = platf_flash_eb(msg[2]);
-
-	if(rv) {
-		txbuf[0] = 0x7F;
-		txbuf[1] = (msg[1] & 0xF8) | 0x01;
-		txbuf[2] = rv;
-		can_tx8bytes(txbuf);
-		return;
-	}
-
-	txbuf[0] = msg[0];
-	txbuf[1] = (msg[1] & 0xF8) | 0x00;
-	can_tx8bytes(txbuf);
+    candatabuffer[0] = (msg[4] | 0x40);
+    can_send_message(candatabuffer, 1);
 
 	return;
-
 }
 
 /* load 8 bytes for flashing, no command code (all bytes are data), called from cmd_loop
@@ -1429,84 +1501,129 @@ static void can_cmd_flash_init(u8 *msg) {
  *
  *
  */
- static void can_cmd_load8bytes(u8 *msg) {
 
- 	u8 i;
+static void can_cmd_write_flash_buffer(u8 *msg)
+{
+    u16 datalen = (msg[2] << 8) | msg[3];
 
-	// this is probably faster than memcpy
-	for (i = 0; i < 8; i++)
-		flashbuffer[(8 * counter8byteblock) + i] = msg[i];
+    if(datalen != (5+flashmessagesize))
+    {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = 0x30;  // general format error
+        can_send_message(candatabuffer, 3);
+        return;
+    }
 
- }
+    // this is probably faster than memcpy
+    memcpy(&flashbuffer[flashbuffercounter], &candatabuffer[9], flashmessagesize);
+    flashbuffercounter += flashmessagesize;
+    if (flashbuffercounter >= flashbuffersize)
+        flashbuffercounter = 0;
 
-/* write flash block, 0xF8 command, called from cmd_loop
+    candatabuffer[0] = (msg[4] | 0x40);
+    can_send_message(candatabuffer, 1);
+}
+
+/* Validate flash buffer, validate flash buffer command, called from cmd_loop
  *
  *
  *
  *
  */
- static void can_cmd_flash_128bytes(u8 *msg) {
+static void can_cmd_validate_flash_buffer(u8 *msg)
+{
+    u32 addr;
+    u32 len;
+    u32 img_crc32;
+    u32 rom_crc32;
+    u16 datalen = (msg[2] << 8) | msg[3];
 
-	u32 i, rv, addr, flashCheckSum;
+    if(datalen != 11)
+    {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = 0x31;  // crc32 error
+        can_send_message(candatabuffer, 3);
+        return;
+    }
 
-	if((msg[1] & 0x07) != 3) {
-		memcpy(txbuf, msg, 8);
-		txbuf[0] = 0x7F;
-		txbuf[1] = (msg[1] & 0xF8) | 0x01;
-		txbuf[2] = 0x30;  // general format error
-		can_tx8bytes(txbuf);
-		return;
-	}
+    addr = (msg[5] << 24) | (msg[6] << 16) | (msg[7] << 8) | msg[8];
+    len = (msg[9] << 8) | msg[10];
+    img_crc32 = (msg[11] << 24) | (msg[12] << 16) | (msg[13] << 8) | msg[14];
 
-	memcpy(txbuf, msg, 8);
+    rom_crc32 = buffer_crc32(flashbuffer, len);
 
-	flashCheckSum = 0;
+    if (rom_crc32 == img_crc32)
+    {
+        candatabuffer[0] = (msg[4] | 0x40);
+        can_send_message(candatabuffer, 1);
+        return;
+    }
 
-    for (i = 0; i < flashblocksize; i++) {
-		flashCheckSum += flashbuffer[i];
-		flashCheckSum = ((flashCheckSum >> 8) & 0xFF) + (flashCheckSum & 0xFF);
-	}
+    candatabuffer[0] = 0x7F;
+    candatabuffer[1] = msg[4];
+    candatabuffer[2] = (rom_crc32 >> 24) & 0xff;
+    candatabuffer[3] = (rom_crc32 >> 16) & 0xff;
+    candatabuffer[4] = (rom_crc32 >> 8) & 0xff;
+    candatabuffer[5] = rom_crc32 & 0xff;
+    can_send_message(candatabuffer, 6);
 
-	if (flashCheckSum != msg[4]) {
-		txbuf[0] = 0x7F;
-		txbuf[1] = (msg[1] & 0xF8) | 0x02;
-		txbuf[2] = 0x31;  // checksum error
-		txbuf[3] = flashCheckSum;
-		can_tx8bytes(txbuf);
-		return;
-	}
+    return;
+}
+/* Write flash block, commit flash buffer command, called from cmd_loop
+ *
+ *
+ *
+ *
+ */
+static void can_cmd_commit_flash_buffer(u8 *msg)
+{
+    //u32 i;
+    u32 rv;
+    u32 addr;
+    u32 len;
+    u32 img_crc32;
+    u32 rom_crc32;
+    u16 datalen = (msg[2] << 8) | msg[3];
 
-	if (counter128byteblock != (u32) ((msg[2] << 8) | msg[3])) {
-		txbuf[0] = 0x7F;
-		txbuf[1] = (msg[1] & 0xF8) | 0x05;
-		txbuf[2] = 0x32;  // block number error
-		txbuf[3] = (counter128byteblock >> 8) & 0xFF;
-		txbuf[4] = counter128byteblock & 0xFF;
-		txbuf[5] = (num128byteblocks >> 8) & 0xFF;
-		txbuf[6] = num128byteblocks & 0xFF;
-		can_tx8bytes(txbuf);
-		return;
-	}
+    if(datalen != 11)
+    {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = 0x31;  // crc32 error
+        can_send_message(candatabuffer, 3);
+        return;
+    }
 
-    addr = flashaddr + (flashblocksize * counter128byteblock);
+    addr = (msg[5] << 24) | (msg[6] << 16) | (msg[7] << 8) | msg[8];
+    len = (msg[9] << 8) | msg[10];
+    img_crc32 = (msg[11] << 24) | (msg[12] << 16) | (msg[13] << 8) | msg[14];
 
-    rv = platf_flash_wb(addr, (u32) flashbuffer, flashblocksize);
+    rv = platf_flash_wb(addr, (u32) flashbuffer, flashbuffersize);
 
-	if(rv) {
-		memcpy(txbuf, msg, 8);
-		txbuf[0] = 0x7F;
-		txbuf[1] = (msg[1] & 0xF8) | 0x01;
-		txbuf[2] = rv;
-		can_tx8bytes(txbuf);
-		return;
-	}
+    if(rv) {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = rv;
+        can_send_message(candatabuffer, 3);
+        return;
+    }
 
-	txbuf[0] = 0x7A;
-	txbuf[1] = (msg[1] & 0xF8) | 0x00;
-	can_tx8bytes(txbuf);
+    rom_crc32 = crc32((const u8 *)addr, len);
 
-	return;
+    if (rom_crc32 == img_crc32)
+    {
+        candatabuffer[0] = (msg[4] | 0x40);
+        can_send_message(candatabuffer, 1);
+        return;
+    }
 
+    candatabuffer[0] = 0x7F;
+    candatabuffer[1] = msg[4];
+    can_send_message(candatabuffer, 2);
+
+    return;
 }
 
 /* kernelid command processor, 0x1A command, called from cmd_loop.
@@ -1515,90 +1632,26 @@ static void can_cmd_flash_init(u8 *msg) {
  *
  *
  */
-static void can_cmd_ecuid(u8 *msg)
+static void can_cmd_request_ecuid(u8 *msg)
 {
-	u8 len = sizeof(npk_ver_string) - 1;
-	u8 msgindex = 0;
-	u8 txindex = 2;
+    u16 datalen = (msg[2] << 8) | msg[3];
 
- 	#if defined CAN_TP // For SH7058 iso15765 models (MY07+)
-	bool first_frame = true;
-	u8 msglen = len;
-	u8 frame_index = 0;
+    if(datalen != 1)
+    {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = 0x30;  // general format error
+        can_send_message(candatabuffer, 3);
+        return;
+    }
 
-	if (msg[0]) {} // just to keep compiler happy
-	
-	while (len)
-	{
-		if (first_frame) {
-			txbuf[0] = 0x10;
-			txbuf[1] = msglen;
-		}
-		else {
-			txbuf[0] = 0x20 | frame_index;
-			txbuf[1] = 0x20;
-		}
-		txbuf[2] = 0x20;
-		txbuf[3] = 0x20;
-		txbuf[4] = 0x20;
-		txbuf[5] = 0x20;
-		txbuf[6] = 0x20;
-		txbuf[7] = 0x20;
+    u8 len = sizeof(kernel_id_string);
 
-		while (len)
-		{
-			txbuf[txindex] = npk_ver_string[msgindex];
+    candatabuffer[0] = (msg[4] | 0x40);
+    memcpy(&candatabuffer[1], kernel_id_string, len);
+    can_send_message(candatabuffer, len+1);
 
-			txindex++;
-			if (txindex > 7)
-				txindex = 1;
-			msgindex++;
-			len--;
-
-			if (txindex == 1 || (txindex < 7 && len == 0))
-				break;
-		}
-
-		first_frame = false;
-		frame_index++;
-
-		if (frame_index > 15)
-			frame_index = 0;
-		can_tx8bytes(txbuf);
-		delay(5);
-	}
 	return;
-	#endif
-	
-	#ifndef CAN_TP
-	while (len)
-	{
-		txbuf[0] = 0x7A;
-		txbuf[1] = (msg[1] & 0xF8) | 0x06;
-		txbuf[2] = 0x20;
-		txbuf[3] = 0x20;
-		txbuf[4] = 0x20;
-		txbuf[5] = 0x20;
-		txbuf[6] = 0x20;
-		txbuf[7] = 0x20;
-
-		while (len)
-		{
-			txbuf[txindex] = npk_ver_string[msgindex];
-
-			txindex++;
-			if (txindex > 7)
-				txindex = 2;
-			msgindex++;
-			len--;
-
-			if (msgindex % 6 == 0 || (txindex < 7 && len == 0))
-		        break;
-		}
-		can_tx8bytes(txbuf);
-	}
-	return;
-	#endif
 }
 
 /* checksum command processor, 0xD0 command, called from cmd_loop.
@@ -1609,33 +1662,33 @@ static void can_cmd_ecuid(u8 *msg)
  *
  *
  */
- static void can_cmd_cks(u8 *data)
+ static void can_cmd_crc(u8 *msg)
 {
-    uint32_t start = (*(data+2) << 16) | (*(data+3) << 8) | *(data+4);
-    uint32_t size = (*(data+5) << 16) | (*(data+6) << 8) | *(data+7);
+    u32 addr;
+    u32 len;
+    u16 datalen = (msg[2] << 8) | msg[3];
 
-    if((data[1] & 0x07) != 6)
+    if(datalen != 9)
     {
-        memcpy(txbuf, data, 8);
-        txbuf[0] = 0x7F;
-        txbuf[1] = (data[1] & 0xF8) | 0x01;
-        txbuf[2] = 0x30;  // general format error
-        can_tx8bytes(txbuf);
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = 0x30;  // general format error
+        can_send_message(candatabuffer, 3);
         return;
     }
 
-    uint32_t crc;
-    crc = crc32((const u8 *)start, size);
+    addr = (msg[5] << 24) | (msg[6] << 16) | (msg[7] << 8) | msg[8];
+    len = (msg[9] << 24) | (msg[10] << 16) | (msg[11] << 8) | msg[12];
 
-    txbuf[0] = SID_CAN_START_COMM;
-    txbuf[1] = (data[1] & 0xF8) | 0x04;
-    txbuf[2] = ((crc >> 24) & 0xff);
-    txbuf[3] = ((crc >> 16) & 0xff);
-    txbuf[4] = ((crc >> 8) & 0xff);
-    txbuf[5] = (crc & 0xff);
-    txbuf[6] = 0x00;
-    txbuf[7] = 0x00;
-    can_tx8bytes(txbuf);
+    uint32_t crc;
+    crc = crc32((const u8 *)addr, len);
+
+    candatabuffer[0] = (msg[4] | 0x40);
+    candatabuffer[1] = ((crc >> 24) & 0xff);
+    candatabuffer[2] = ((crc >> 16) & 0xff);
+    candatabuffer[3] = ((crc >> 8) & 0xff);
+    candatabuffer[4] = (crc & 0xff);
+    can_send_message(candatabuffer, 5);
     return;
  }
 
@@ -1645,67 +1698,52 @@ static void can_cmd_ecuid(u8 *msg)
  * ex.: "7A D6 00 10 00 00 00 00" dumps 1MB of ROM@ 0x0
  *
  */
-static void can_cmd_dump_eeprom(u8 *msg) {
-	u32 addr;
-	u32 len;
+static void can_cmd_read_eeprom(u8 *msg) {
+    u32 addr;
+    u32 len;
+    u16 datalen = (msg[2] << 8) | msg[3];
 
-	if((msg[1] & 0x07) != 6) {
-		memcpy(txbuf, msg, 8);
-		txbuf[0] = 0x7F;
-		txbuf[1] = (msg[1] & 0xB8) | 0x01;
-		txbuf[2] = 0x30;  // general format error
-		can_tx8bytes(txbuf);
-		return;
-	}
+    if(datalen != 7)
+    {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = 0x30;  // general format error
+        can_send_message(candatabuffer, 3);
+        return;
+    }
 
-	//len = ((msg[2] << 16) | (msg[3] << 8) | msg[4]);
-	len = ((msg[3] << 8) | msg[4]);
-	addr = ((msg[5] << 16) | (msg[6] << 8) | msg[7]);
-	EEPROM_SCI = msg[2];
+    addr = ((msg[6] << 16) | (msg[7] << 8) | msg[8]);
+    len = ((msg[9] << 8) | msg[10]);
+    EEPROM_SCI = msg[5];
 
 	len &= ~1;	/* align to 16bits */
 
-	txbuf[0] = 0x7A;
-	txbuf[1] = (msg[1] & 0xB8);
-	txbuf[2] = msg[2];
-	txbuf[3] = msg[3];
-	txbuf[4] = msg[4];
-	txbuf[5] = msg[5];
-	txbuf[6] = msg[6];
-	txbuf[7] = msg[7];
-	can_tx8bytes(txbuf);
-	can_idle(750);
+    candatabuffer[0] = (msg[4] | 0x40);
+    can_send_message(candatabuffer, 1);
+    can_idle(750);
 
 	addr /= 2;	/* modify address to fit with eeprom 256*16bit org */
 	len &= ~1;	/* align to 16bits */
-	while (len) {
-		uint16_t pbuf[8];
-		uint8_t *pstart;	//start of ISO packet
-		uint16_t *ebuf = &pbuf[0];	//cheat : form an ISO packet with the pos resp code in pbuf[0]
 
-		int pktlen;
-		int ecur;
+    uint16_t pbuf[len];
+    uint8_t *pstart;	//start of ISO packet
+    uint16_t *ebuf = &pbuf[0];	//cheat : form an ISO packet with the pos resp code in pbuf[0]
 
-		pstart = (uint8_t *)(pbuf);
+    int pktlen;
+    int ecur;
 
-		pktlen = len;
-		if (pktlen > 8) pktlen = 8;
+    pstart = (uint8_t *)(pbuf);
 
-		for (ecur = 0; ecur < (pktlen / 2); ecur += 1) {
-			eep_can_read16_sub((uint8_t) addr + ecur, (uint16_t *)&ebuf[ecur]);
-			//txbuf[ecur * 2] = ebuf[ecur] & 0xFF;
-			//txbuf[ecur * 2 + 1] = (ebuf[ecur] >> 8) & 0xFF;
-		}
-		//iso_sendpkt(pstart, pktlen + 1);
+    pktlen = len;
 
-		memcpy(txbuf, pstart, pktlen);
-		can_tx8bytes(txbuf);
-		//can_tx8bytes(pstart);
+    for (ecur = 0; ecur < (pktlen / 2); ecur += 1) {
+        eep_can_read16_sub((uint8_t) addr + ecur, (uint16_t *)&ebuf[ecur]);
+    }
 
-		len -= pktlen;
-		addr += (pktlen / 2);	//work in eeprom addresses
-	}
+    memcpy(candatabuffer, pstart, pktlen);
+    can_send_message(candatabuffer, pktlen);
 
+    return;
 }
 
 /* dump rom command processor, 0xD8 command, called from cmd_loop.
@@ -1716,222 +1754,205 @@ static void can_cmd_dump_eeprom(u8 *msg) {
  * ex.: "7A DE 00 10 00 00 00 00" dumps 1MB of ROM@ 0x0
  *
  */
-static void can_cmd_dump(u8 *msg)
+static void can_cmd_read_area(u8 *msg)
 {
 	u32 addr;
 	u32 len;
+    u16 datalen = (msg[2] << 8) | msg[3];
 
-	if((msg[1] & 0x07) != 6) {
-		memcpy(txbuf, msg, 8);
-		txbuf[0] = 0x00 | 0x07;
-		txbuf[1] = 0x7A;
-		txbuf[2] = (msg[1] & 0xF8) | 0x01;
-		txbuf[3] = 0x30;  // general format error
-		can_tx8bytes(txbuf);
-		return;
+    if(datalen != 7) {
+        candatabuffer[0] = 0x7F;
+        candatabuffer[1] = msg[4];
+        candatabuffer[2] = 0x30;  // general format error
+        can_send_message(candatabuffer, 3);
+        return;
 	}
 
-	len = ((msg[2] << 24) | (msg[3] << 16) | (msg[4] << 8) | 0x00);
-	addr = ((msg[5] << 24) | (msg[6] << 16) | (msg[7] << 8) | 0x00);
+    addr = (msg[5] << 24) | (msg[6] << 16) | (msg[7] << 8) | (msg[8]);
+    len = (msg[9] << 8) | (msg[10]);
 
-	txbuf[0] = 0x10;
-	txbuf[1] = 0x08;
-	txbuf[2] = msg[0];
-	txbuf[3] = (msg[1] & 0xF8);
-	txbuf[4] = msg[2];
-	txbuf[5] = msg[3];
-	txbuf[6] = msg[4];
-	txbuf[7] = msg[5];
-	can_tx8bytes(txbuf);
-	txbuf[0] = 0x20 | 0x01;
-	txbuf[1] = msg[6];
-	txbuf[2] = msg[7];
-	can_tx8bytes(txbuf);
-	can_idle(750);
+    candatabuffer[0] = (msg[4] | 0x40);
+    memcpy(&candatabuffer[1], (void *) addr, len);
+    can_send_message(candatabuffer, len+1);
 
- 	#if defined CAN_TP // For SH7058 iso15765 models (MY07+)
-	static u8 rx8bytes[8];
-	bool first_frame = true;
-	u8 bytes_to_send = 0;
-	u8 txindex = 2;
-	u8 framesize = 8;
-	u8 frame_index = 0;
-	u8 frame_delay = 1;
-	
-	while (len)
-	{
-		if (!first_frame)
-		{
-			delay(1);
-			int rv = can_rx8bytes(rx8bytes);
-			if(rv == 1) // 0 = no data, 1 = data, -1 no unread message available
-			{
-				if ((rx8bytes[0] & 0xf0) == 0x30)
-				{
-					txbuf[0] = rx8bytes[0];
-					txbuf[1] = rx8bytes[1];
-					txbuf[2] = rx8bytes[2];
-					can_tx8bytes(txbuf);
-					frame_delay = rx8bytes[2];
-				}
-			}
-		}
-		if (first_frame) {
-			txbuf[0] = 0x10 | ((len >> 8) & 0x0f);
-			txbuf[1] = (len & 0xff);
-			txindex = 2;
-		}
-		else {
-			txbuf[0] = 0x20 | frame_index;
-			txindex = 1;
-		}
-
-		bytes_to_send = framesize - txindex;
-		if (len < bytes_to_send)
-			bytes_to_send = len;
-
-		memcpy(&txbuf[txindex], (void *) addr, bytes_to_send);
-		len -= bytes_to_send;
-		addr += bytes_to_send;
-		txindex = 1;
-
-		first_frame = false;
-		frame_index++;
-
-		if (frame_index > 15)
-			frame_index = 0;
-		can_tx8bytes(txbuf);
-		delay(frame_delay);
-	}
-	return;
-	#endif
-
-	while (len) {
-		u32 pktlen;
-		pktlen = len;
-		if (pktlen > 8)
-			pktlen = 8;
-		
-		//txbuf[0] = 0x01 | pktlen;
-		//memcpy(&txbuf[2], (void *) addr, pktlen);
-		memcpy(txbuf, (void *) addr, pktlen);
-		can_tx8bytes(txbuf);
-		len -= pktlen;
-		addr += pktlen;
-		//can_idle(750);
-	}
-
-	return;
-
+    return;
 }
 
+int can_send_message(u8 *msg, u32 msglen)
+{
+    u32 len = msglen+4;
+
+    if (len < 8)
+    {
+        txbuf[0] = 0x00 | len;
+        txbuf[1] = (SUB_KERNEL_START_COMM >> 8) & 0xFF;
+        txbuf[2] = SUB_KERNEL_START_COMM & 0xFF;
+        txbuf[3] = (msglen >> 8) & 0xFF;
+        txbuf[4] = msglen & 0xFF;
+        memcpy(&txbuf[5], msg, msglen);
+        can_tx8bytes(txbuf);
+        return 0;
+    }
+    else
+    {
+        bool first_frame = true;
+        static u8 rx8bytes[8];
+        u8 bytes_to_send = 0;
+        u8 txindex = 2;
+        u8 framesize = 8;
+        u8 frame_index = 0;
+        u8 frame_delay = 1;
+
+        while (len)
+        {
+            if (!first_frame)
+            {
+                delay(1);
+                int rv = can_rx8bytes(rx8bytes);
+                if(rv == 1) // 0 = no data, 1 = data, -1 no unread message available
+                {
+                    if ((rx8bytes[0] & 0xf0) == 0x30)
+                    {
+                        memcpy(txbuf, rx8bytes, 8);
+                        can_tx8bytes(txbuf);
+                        frame_delay = rx8bytes[2];
+                    }
+                }
+            }
+            if (first_frame) {
+                txbuf[0] = 0x10 | ((len >> 8) & 0x0f);
+                txbuf[1] = (len & 0xff);
+                txbuf[2] = (SUB_KERNEL_START_COMM >> 8) & 0xFF;
+                txbuf[3] = SUB_KERNEL_START_COMM & 0xFF;
+                txbuf[4] = (msglen >> 8) & 0xFF;
+                txbuf[5] = msglen & 0xFF;
+                txindex = 6;
+            }
+            else {
+                txbuf[0] = 0x20 | frame_index;
+                txindex = 1;
+            }
+
+            bytes_to_send = framesize - txindex;
+            if (len < bytes_to_send)
+                bytes_to_send = len;
+
+            memcpy(&txbuf[txindex], msg, bytes_to_send);
+            len -= bytes_to_send;
+            msg += bytes_to_send;
+            txindex = 1;
+
+            first_frame = false;
+            frame_index++;
+
+            if (frame_index > 15)
+                frame_index = 0;
+            can_tx8bytes(txbuf);
+            delay(frame_delay);
+        }
+        return 0;
+    }
+}
+
+int can_get_message(u8 *msg)
+{
+    static u8 rx8bytes[8];
+
+    int rv = can_rx8bytes(rx8bytes);
+    if(rv == 0) // 0 = no data, 1 = data, -1 no unread message available
+        return rv;
+
+    if(rv == -1)
+        return rv;
+
+    int data_length = 0;
+    u8 frame_index = 0;
+
+    if ((rx8bytes[0] & 0xf0) == 0x00)
+    {
+        memcpy(msg, &rx8bytes[1], 7);
+        //u16 msglength = rx8bytes[0] & 0x0f;
+        data_length = rx8bytes[0] & 0x0f;
+    }
+    else if ((rx8bytes[0] & 0xf0) == 0x10)
+    {
+        memcpy(msg, &rx8bytes[2], 6);
+        u32 msgindex = 6;
+        u8 msglength = 0;
+        //u16 msglength = ((rx8bytes[0] & 0x0f) << 8) + rx8bytes[1];
+        data_length = ((rx8bytes[0] & 0x0f) << 8) + rx8bytes[1] - 6;
+        txbuf[0] = 0x30;
+        txbuf[1] = 0x00;
+        txbuf[2] = 0x00;
+        can_tx8bytes(txbuf);
+        while (data_length > 0)
+        {
+            delay(1);
+            rv = can_rx8bytes(rx8bytes);
+            if(rv == 0) // 0 = no data, 1 = data, -1 no unread message available
+                continue;
+
+            if ((rx8bytes[0] & 0xf0) == 0x20)
+            {
+                msglength = 7;
+                if (data_length < 7)
+                    msglength = data_length;
+                memcpy(&msg[msgindex], &rx8bytes[1], msglength);
+                msgindex += msglength;
+                data_length -= msglength;
+            }
+            if ((rx8bytes[0] & 0xf0) == 0x30)
+            {
+                memcpy(txbuf, rx8bytes, 8);
+                can_tx8bytes(txbuf);
+            }
+        }
+    }
+    else if ((rx8bytes[0] & 0xf0) == 0x20)
+    {
+        //memcpy(candatabuffer, rx8bytes, 8);
+        //can_tx8bytes(candatabuffer);
+        return 0;
+    }
+    else if ((rx8bytes[0] & 0xf0) == 0x30)
+    {
+        memcpy(candatabuffer, rx8bytes, 8);
+        can_tx8bytes(candatabuffer);
+        return 0;
+    }
+    frame_index++;
+
+    return rv;
+}
 
 void can_cmd_loop(void)
 {
+    u16 startcode;
 	u8 cmd;
-	static u8 rx8bytes[8];
-	static u8 currentmsg[256];
-	bool loadingblocks = false;
-	counter8byteblock = 0;
-	
-	while (1) {
-		int rv = can_rx8bytes(rx8bytes);
-		if(rv == 0) // 0 = no data, 1 = data, -1 no unread message available
-			continue;
+    //static u8 candatabuffer[datablocklength];
+    //bool loadingblocks = false;
+    //counter8byteblock = 0;
 
-		if(rv == -1)
-		{
-			txbuf[0] = 0x00 | 0x07;
-			txbuf[1] = 0x7F;
-			txbuf[2] = rx8bytes[2];
-			txbuf[3] = rx8bytes[3];
-			txbuf[4] = 0x36;   // no unread message available error
-			can_tx8bytes(txbuf);
-			continue;
-		}
 
-		#if defined CAN_TP // iso15765 models
-		int data_length = 0;
-		u8 frame_index = 0;
+    while (1)
+    {
+        int rv = can_get_message(candatabuffer);
+        if(rv == 0) // 0 = no data, 1 = data, -1 no unread message available
+            continue;
 
-		if ((rx8bytes[0] & 0xf0) == 0x00)
-		{
-			memcpy(currentmsg, &rx8bytes[1], 7);
-			//u16 msglength = rx8bytes[0] & 0x0f;
-			data_length = rx8bytes[0] & 0x0f;
-		}
-		else if ((rx8bytes[0] & 0xf0) == 0x10)
-		{
-			memcpy(currentmsg, &rx8bytes[2], 6);
-			u8 msgindex = 6;
-			u8 msglength = 0;
-			//u16 msglength = ((rx8bytes[0] & 0x0f) << 8) + rx8bytes[1];
-			data_length = ((rx8bytes[0] & 0x0f) << 8) + rx8bytes[1] - 6;
-			txbuf[0] = 0x30;
-			txbuf[1] = 0x00;
-			txbuf[2] = 0x00;
-			can_tx8bytes(txbuf);
-			while (data_length > 0)
-			{
-				delay(1);
-				rv = can_rx8bytes(rx8bytes);
-				if(rv == 0) // 0 = no data, 1 = data, -1 no unread message available
-					continue;
+        if(rv == -1)
+        {
+            candatabuffer[0] = 0x7F;
+            candatabuffer[1] = 0x36;   // no unread message available error
+            can_send_message(candatabuffer, 2);
+            continue;
+        }
 
-				if ((rx8bytes[0] & 0xf0) == 0x20)
-				{
-					msglength = 7;
-					if (data_length < 7)
-						msglength = data_length;
-					memcpy(&currentmsg[msgindex], &rx8bytes[1], msglength);
-					msgindex+=msglength;
-					data_length -= msglength;
-				}
-				if ((rx8bytes[0] & 0xf0) == 0x30)
-				{
-					memcpy(txbuf, rx8bytes, 8);
-					can_tx8bytes(txbuf);
-				}
-			}
-		}
-		else if ((rx8bytes[0] & 0xf0) == 0x20)
+        startcode = (candatabuffer[0] << 8) | (candatabuffer[1] & 0xff);
+        /*
+        if (loadingblocks)
 		{
-			txbuf[0] = 0x00 | 0x07;
-			txbuf[1] = 0x7F;
-			txbuf[2] = rx8bytes[0];
-			txbuf[3] = rx8bytes[1];
-			txbuf[4] = rx8bytes[2];
-			txbuf[5] = rx8bytes[3];
-			txbuf[6] = rx8bytes[4];
-			txbuf[7] = rx8bytes[5];
-			memcpy(txbuf, rx8bytes, 8);
-			can_tx8bytes(txbuf);
-			continue;
-		}
-		else if ((rx8bytes[0] & 0xf0) == 0x30)
-		{
-			txbuf[0] = 0x00 | 0x07;
-			txbuf[1] = 0x7F;
-			txbuf[2] = rx8bytes[0];
-			txbuf[3] = rx8bytes[1];
-			txbuf[4] = rx8bytes[2];
-			txbuf[5] = rx8bytes[3];
-			txbuf[6] = rx8bytes[4];
-			txbuf[7] = rx8bytes[5];
-			memcpy(txbuf, rx8bytes, 8);
-			can_tx8bytes(txbuf);
-			continue;
-		}
-		//else if ((rx8bytes[0] & 0xf0) == 0x20) {
-		//	frame_index = rx8bytes[0] & 0x0f;
-		//}
-		//data_length++;
-		frame_index++;
-		#endif
-
-		if (loadingblocks)
-		{
-			can_cmd_load8bytes(rx8bytes);
+            can_cmd_load8bytes(candatabuffer);
 			counter8byteblock++;
 			if (counter8byteblock > 15)
 			{
@@ -1939,72 +1960,89 @@ void can_cmd_loop(void)
 				loadingblocks = false;
 			}
 		}
-		else if(currentmsg[0] == SID_CAN_START_COMM)
-		{
-			cmd = currentmsg[1] & 0xF8;
-
-			switch(cmd)
+        else if(startcode == SUB_KERNEL_START_COMM)*/
+        if(startcode == SUB_KERNEL_START_COMM)
+        {
+            cmd = candatabuffer[4] & 0xFF;
+            switch(cmd)
 			{
-				case SID_CAN_RECUID: // 0xA0 Request kernel ID
-					can_cmd_ecuid(currentmsg);
+                case SUB_KERNEL_ID: // 0x01 Request kernel ID
+                    can_cmd_request_ecuid(candatabuffer);
 					break;
 
-				case SID_CAN_DUMP_EEPROM: // 0xB8 Dump eeprom
-					can_cmd_dump_eeprom(currentmsg);
+                case SUB_KERNEL_CRC: // 0x02 Request CRC32 checksum
+                    can_cmd_crc(candatabuffer);
 					break;
 
-				case SID_CAN_CKS: // 0xD0 Request crc32 checksum
-					can_cmd_cks(currentmsg);
+                case SUB_KERNEL_READ_AREA: // 0x03 Read ROM data
+                    can_cmd_read_area(candatabuffer);
 					break;
 
-				case SID_CAN_DUMP: // 0xD8 Dump ROM
-					can_cmd_dump(currentmsg);
+                case SUB_KERNEL_PROG_VOLT: // 0x04 Read programming voltage
+                    can_cmd_get_programming_voltage(candatabuffer);
+                    break;
+
+                case SUB_KERNEL_GET_MAX_MSG_SIZE: // 0x05 Get max message size
+                    can_cmd_max_msg_size(candatabuffer);
+                    break;
+
+                case SUB_KERNEL_GET_MAX_BLK_SIZE: // 0x06 Get max flashblock size
+                    can_cmd_max_blk_size(candatabuffer);
+                    break;
+
+                case SUB_KERNEL_READ_EEPROM: // 0x07 Read EEPROM data
+                    can_cmd_read_eeprom(candatabuffer);
+                    break;
+
+                case SUB_KERNEL_FLASH_ENABLE:
+                    can_cmd_flash_init(candatabuffer); // 0x20
+                    break;
+
+                case SUB_KERNEL_FLASH_DISABLE:
+                    can_cmd_flash_init(candatabuffer); // 0x21
+                    break;
+
+                case SUB_KERNEL_WRITE_FLASH_BUFFER: // 0x22 Write bytes to flashbuffer
+                    can_cmd_write_flash_buffer(candatabuffer);
 					break;
 
-				case SID_CAN_FLASH_INIT: // 0xE0 Init flash write
-					PFC.PDIOR.WORD |= 0x0100;
-					can_cmd_flash_init(currentmsg);
-					break;
+                case SUB_KERNEL_VALIDATE_FLASH_BUFFER: // 0x23 Validate flashbuffer
+                    can_cmd_validate_flash_buffer(candatabuffer);
+                    break;
 
-				case SID_CAN_FLASH_ERASE: // 0xF0 Erase flash block
-					can_cmd_erase_block(currentmsg);
-					loadingblocks = true;
-					break;
+                case SUB_KERNEL_COMMIT_FLASH_BUFFER: // 0x24 Commit flashbuffer write
+                    can_cmd_commit_flash_buffer(candatabuffer);
+                    break;
 
-				case SID_CAN_FLASH_WRITE: // 0XF8 Write 128 bytes to flash
-					can_cmd_flash_128bytes(currentmsg);
-					counter128byteblock++;
-					if (counter128byteblock < num128byteblocks)
-						loadingblocks = true;
-					break;
+                case SUB_KERNEL_BLANK_PAGE: //  // 0x25 Erase flash block
+                    can_cmd_erase_block(candatabuffer);
+                    //loadingblocks = true;
+                    break;
 
-				default:
-					txbuf[0] = 0x00 | 0x07;
-					txbuf[1] = 0x7F;
-					txbuf[2] = (currentmsg[1] & 0xF8) | 0x01;
-					txbuf[3] = 0x34;   // unrecognised 0x7A command
-					can_tx8bytes(txbuf);
-					break;
+                default:
+                    candatabuffer[0] = 0x7F;
+                    candatabuffer[1] = candatabuffer[4];
+                    candatabuffer[2] = 0x34;   // unrecognised 0x7A command
+                    can_send_message(candatabuffer, 3);
+                    break;
 			}
 		}
 		else
 		{
-			if ((currentmsg[0] == 0xFF) && (currentmsg[1] == 0xC8))
+            if ((candatabuffer[4] == 0xFF) && (candatabuffer[5] == 0xC8))
 			{
-				txbuf[0] = 0x00 | 0x07;
-				txbuf[1] = 0xFF;
-				txbuf[2] = 0xC8;
-				can_tx8bytes(txbuf);
-				die();
+                candatabuffer[0] = 0xFF;
+                candatabuffer[1] = 0xC8;
+                can_send_message(candatabuffer, 2);
+                die();
 			}
-
-			txbuf[0] = 0x00 | 0x07;
-			txbuf[1] = 0x7F;
-			txbuf[2] = (currentmsg[1] & 0xF8) | 0x01;
-			txbuf[3] = 0x35;    // unrecognised command (non 0x7A)
-			can_tx8bytes(txbuf);
-		}
-		memset(currentmsg, 0, 256);
+            txbuf[0] = 0x7F;
+            txbuf[1] = 0x35;    // unrecognised command (non 0x7A)
+            memcpy(&txbuf[2], candatabuffer, 16);
+            can_send_message(txbuf, 18);
+        }
+        memset(candatabuffer, 0, datablocksize);
+        memset(txbuf, 0, 256);
 	}
 	die();
 	return;

@@ -19,6 +19,20 @@
 
 #include "stypes.h"
 
+
+/****************************
+ *
+ * K-Line functions
+ *
+ ****************************/
 void cmd_init(u8 brrdiv);
 void cmd_loop(void);
+
+/****************************
+ *
+ * CAN / ISO15765 functions
+ *
+ ****************************/
+int can_send_message(u8 *msg, u32 len);
+int can_get_message(u8 *msg);
 void can_cmd_loop(void);

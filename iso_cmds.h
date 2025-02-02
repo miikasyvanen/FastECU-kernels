@@ -19,6 +19,22 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define SUB_KERNEL_START_COMM               0xBEEF
+#define SUB_KERNEL_ID                       0x01
+#define SUB_KERNEL_CRC                      0x02
+#define SUB_KERNEL_READ_AREA                0x03
+#define SUB_KERNEL_PROG_VOLT                0x04
+#define SUB_KERNEL_GET_MAX_MSG_SIZE         0x05
+#define SUB_KERNEL_GET_MAX_BLK_SIZE         0x06
+#define SUB_KERNEL_READ_EEPROM              0x07
+#define SUB_KERNEL_WRITE_EEPROM             0x08
+
+#define SUB_KERNEL_FLASH_ENABLE             0x20
+#define SUB_KERNEL_FLASH_DISABLE			0x21
+#define SUB_KERNEL_WRITE_FLASH_BUFFER		0x22
+#define SUB_KERNEL_VALIDATE_FLASH_BUFFER	0x23
+#define SUB_KERNEL_COMMIT_FLASH_BUFFER      0x24
+#define SUB_KERNEL_BLANK_PAGE               0x25
 
 #define SID_CAN_START_COMM  0x7A
 #define SID_CAN_RECUID      0xA0    // Read ECU ID, in this case kernel ID
