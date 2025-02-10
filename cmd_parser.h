@@ -19,6 +19,8 @@
 
 #include "stypes.h"
 
+void send_message(u8 *buf, u32 msglen);
+
 //#define KLINE
 #if defined(KLINE)
 /****************************
