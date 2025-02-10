@@ -36,6 +36,8 @@
 #define SUB_KERNEL_COMMIT_FLASH_BUFFER      0x24
 #define SUB_KERNEL_BLANK_PAGE               0x25
 
+#define SUB_KERNEL_INIT                     0x81
+
 #define SID_CAN_START_COMM  0x7A
 #define SID_CAN_RECUID      0xA0    // Read ECU ID, in this case kernel ID
 #define SID_CAN_DUMP_EEPROM 0xB8	// Format : 0xBD <AS> <BH BL> <AH AL>  ; AS=0 for EEPROM, =1 for ROM

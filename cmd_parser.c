@@ -30,7 +30,11 @@
 #include "crc.h"
 #include "cmd_parser.h"
 
-#define MAX_INTERBYTE	10	//ms between bytes that causes a disconnect
+#define MAX_INTERBYTE	1	//ms between bytes that causes a disconnect
+
+//#define KLINE
+//#define CAN
+//#define CAN_TP
 
 /* concatenate the ReadECUID positive response byte
  * in front of the version string
@@ -66,10 +70,6 @@
  * We just need to make sure the comms functions (iso_sendpkt, tx_7F etc) use their own
  * private buffers. */
 static u8 txbuf[256];
-
-#if defined(KLINE)
-static void tx_7F(u8 sid, u8 nrc);
-#endif
 
 typedef enum {
 	EEPSCI3_PJ2 = 2,
@@ -161,7 +161,7 @@ void __attribute__ ((noinline)) EEPROM_init(void) {
 		set_sci4_cs();                              // turn on  PF10 (general I/O) - bring EEPROM CS high
 		PFC.PBCRH.WORD = (PFC.PBCRH.WORD & ~0x0030) | 0x0010; // turn off PB10MD0 and PB10MD1 - set PB10 to general I/O THEN set PB10 to TxD4
 	}
-	else if (EEPROM_SCI == EEPSCI3_PJ2 || EEPROM_SCI == EEPSCI3_PJ3) {
+    else if (EEPROM_SCI == EEPSCI3_PJ2) {
 		// prepare for read
 		PFC.PLIR.WORD &= ~0x0100;                          // PL8 (SCK3) not inverted
 		PFC.PBCRH.WORD &= ~0x0003;                          // turn off PB8MD0 and PB8MD1 - set PB8 to general I/O
@@ -169,6 +169,14 @@ void __attribute__ ((noinline)) EEPROM_init(void) {
 		set_sci3_cs();
 		PFC.PBCRH.WORD = (PFC.PBCRH.WORD & ~0x0003) | 0x0001; // turn off PB8MD0 and PB8MD1 - set PB8 to general I/O THEN set PB8 to TxD3
 	}
+    else if (EEPROM_SCI == EEPSCI3_PJ3) { // FOR TESTING
+        // prepare for read
+        PFC.PLIR.WORD &= ~0x0100;                          // PL8 (SCK3) not inverted
+        PFC.PBCRH.WORD &= ~0x0003;                          // turn off PB8MD0 and PB8MD1 - set PB8 to general I/O
+        PB.DR.WORD &= ~0x0100;                             // turn off PB8 (general I/O)
+        set_sci3_cs();
+        PFC.PBCRH.WORD = (PFC.PBCRH.WORD & ~0x0003) | 0x0001; // turn off PB8MD0 and PB8MD1 - set PB8 to general I/O THEN set PB8 to TxD3
+    }
 
 	return;
 
@@ -278,8 +286,103 @@ void __attribute__ ((noinline)) EEPROM_TX_bytes(uint32_t cmd, uint8_t len) {
 
 }
 
+#define datablocksize   0x410
+static u8 databuffer[datablocksize];
+#ifdef KLINE
+static u8 sendbuffer[datablocksize];
+#endif
+
+/*
+ * Read ROM area command processor, 0xD8 command, called from cmd_loop.
+ * args[0]          : 0x03
+ * args[1,2,3,4]    : address
+ * args[5,6]        : read area size
+ */
+static void cmd_read_area(u8 *msg)
+{
+    u32 addr;
+    u32 len;
+    u16 datalen = (msg[2] << 8) | msg[3];
+
+    if(datalen != 7) {
+        databuffer[0] = 0x7F;
+        databuffer[1] = msg[4];
+        databuffer[2] = 0x30;  // general format error
+#ifdef KLINE
+        kline_send_message(databuffer, 3);
+#endif
+#ifndef KLINE
+        can_send_message(databuffer, 3);
+#endif
+        return;
+    }
+
+    addr = (msg[5] << 24) | (msg[6] << 16) | (msg[7] << 8) | (msg[8]);
+    len = (msg[9] << 8) | (msg[10]);
+
+    databuffer[0] = (msg[4] | 0x40);
+    memcpy(&databuffer[1], (void *) addr, len);
+#ifdef KLINE
+    kline_send_message(databuffer, len+1);
+#endif
+#ifndef KLINE
+    can_send_message(databuffer, len+1);
+#endif
+
+    return;
+}
+
+/*
+ * Kernel ID command processor, 0x01 command, called from cmd_loop.
+ * args[0] : 0x01
+ */
+static void cmd_request_ecuid(u8 *msg)
+{
+    u16 datalen = (msg[2] << 8) | msg[3];
+
+    if(datalen != 1)
+    {
+        databuffer[0] = 0x7F;
+        databuffer[1] = msg[4];
+        databuffer[2] = 0x30;  // general format error
+#ifdef KLINE
+        kline_send_message(databuffer, 3);
+#endif
+#ifndef KLINE
+        can_send_message(databuffer, 3);
+#endif
+        return;
+    }
+
+    u8 len = sizeof(kernel_id_string);
+
+    databuffer[0] = (msg[4] | 0x40);
+    memcpy(&databuffer[1], kernel_id_string, len);
+#ifdef KLINE
+    kline_send_message(databuffer, len+1);
+#endif
+#ifndef KLINE
+    can_send_message(databuffer, len+1);
+#endif
+
+    return;
+}
+
 
 #if defined(KLINE)
+
+/***********************************************
+*
+*	K-Line kernel functions
+*
+*
+*
+*
+*
+*
+*
+***********************************************/
+
 static void __attribute__ ((noinline)) eep_read16_sub(uint8_t addr, uint16_t *dest) {
 
 	uint8_t not_ready_counter;
@@ -300,7 +403,10 @@ static void __attribute__ ((noinline)) eep_read16_sub(uint8_t addr, uint16_t *de
 		}
 	}
 
-	tx_7F(SID_DUMP, ISO_NRC_GR);
+    txbuf[0] = 0x7f;
+    txbuf[0] = SID_DUMP;
+    txbuf[0] = ISO_NRC_GR;
+    kline_send_message(txbuf, 3);
 	return;
 
 }
@@ -349,27 +455,24 @@ static uint32_t __attribute__ ((noinline)) eep_write16_sub(uint8_t addr, uint8_t
 }
 */
 
+static u16 bufferindex = 0;
+static u16 msgindex = 0;
+static u16 msglength = 0;
+//static u32 flashaddr = 0;
+//static u32 flashbufferindex = 0;
+
 /* low-level error code, to give more detail about errors than the SID 7F NRC can provide,
  * without requiring the error string list of nisprog to be updated.
  */
 static u8 lasterr = 0;
-
-/* make receiving slightly easier maybe */
-struct iso14230_msg {
-	int	hdrlen;		//expected header length : 1 (len-in-fmt), 2(fmt + len), 3(fmt+addr), 4(fmt+addr+len)
-	int	datalen;	//expected data length
-	int	hi;		//index in hdr[]
-	int	di;		//index in data[]
-	u8	hdr[4];
-	u8	data[256];	//255 data bytes + checksum
-};
 
 void set_lasterr(u8 err) {
 	lasterr = err;
 }
 
 /** simple 8-bit sum */
-static uint8_t cks_u8(const uint8_t * data, unsigned int len) {
+static uint8_t cks_u8(const uint8_t * data, unsigned int len)
+{
 	uint8_t rv=0;
 
 	while (len > 0) {
@@ -417,17 +520,76 @@ static void sci_rxidle(unsigned ms) {
 	}
 }
 
-/** send a whole buffer, blocking. For use by iso_sendpkt() only */
-static void sci_txblock(const uint8_t *buf, uint32_t len) {
-	for (; len > 0; len--) {
-		while (!NPK_SCI.SSR.BIT.TDRE) {}	//wait for empty
-		NPK_SCI.TDR = *buf;
-		buf++;
-		NPK_SCI.SSR.BIT.TDRE = 0;		//start tx
-	}
+/* kernelid command processor, 0x01 command, called from cmd_loop.
+ * args[0] : 0x01
+ *
+ */
+/*
+static void kline_cmd_request_ecuid(u8 *msg)
+{
+    u16 datalen = (msg[2] << 8) | msg[3];
+
+    if(datalen != 1)
+    {
+        databuffer[0] = 0x7F;
+        databuffer[1] = msg[4];
+        databuffer[2] = 0x30;  // general format error
+        kline_send_message(databuffer, 3);
+        return;
+    }
+
+    u8 len = sizeof(kernel_id_string);
+
+    databuffer[0] = (msg[4] | 0x40);
+    memcpy(&databuffer[1], kernel_id_string, len);
+    kline_send_message(databuffer, len+1);
+
+    return;
+}
+*/
+/*
+ * Read ROM area command processor, 0xD8 command, called from cmd_loop.
+ * args[0]          : 0x03
+ * args[1,2,3,4]    : address
+ * args[5,6]        : read area size
+ */
+/*
+static void kline_cmd_read_area(u8 *msg)
+{
+    u32 addr;
+    u32 len;
+    u16 datalen = (msg[2] << 8) | msg[3];
+
+    if(datalen != 7) {
+        databuffer[0] = 0x7F;
+        databuffer[1] = msg[4];
+        databuffer[2] = 0x30;  // general format error
+        kline_send_message(databuffer, 3);
+        return;
+    }
+
+    addr = (msg[5] << 24) | (msg[6] << 16) | (msg[7] << 8) | (msg[8]);
+    len = (msg[9] << 8) | (msg[10]);
+
+    databuffer[0] = (msg[4] | 0x40);
+    memcpy(&databuffer[1], (void *) addr, len);
+    kline_send_message(databuffer, len+1);
+
+    return;
+}
+*/
+/** send a whole buffer, blocking. */
+static void sci_txblock(const uint8_t *buf, uint32_t len)
+{
+    for (; len > 0; len--) {
+        while (!NPK_SCI.SSR.BIT.TDRE) {}	//wait for empty
+        NPK_SCI.TDR = *buf;
+        buf++;
+        NPK_SCI.SSR.BIT.TDRE = 0;		//start tx
+    }
 }
 
-/** Send a headerless iso14230 packet
+/** Send a headerless iso9141 packet
  * @param len is clipped to 0xff
  *
  * disables RX during sending to remove halfdup echo. Should be reliable since
@@ -435,57 +597,33 @@ static void sci_txblock(const uint8_t *buf, uint32_t len) {
  *
  * this is blocking
  */
-static void iso_sendpkt(const uint8_t *buf, int len) {
-	u8 hdr[2];
-	uint8_t cks;
-	if (len <= 0) return;
+void kline_send_message(u8 *buf, u32 msglen)
+{
+    if (msglen <= 0)
+        return;
 
-	if (len > 0xff) len = 0xff;
+    NPK_SCI.SCR.BIT.RE = 0;
 
-	NPK_SCI.SCR.BIT.RE = 0;
+    uint32_t len = msglen + 5;
 
-	if (len <= 0x3F) {
-		hdr[0] = (uint8_t) len;
-		sci_txblock(hdr, 1);	//FMT/Len
-	} else {
-		hdr[0] = 0;
-		hdr[1] = (uint8_t) len;
-		sci_txblock(hdr, 2);	//Len
-	}
+    sendbuffer[0] = (SUB_KERNEL_START_COMM >> 8) & 0xff;
+    sendbuffer[1] = SUB_KERNEL_START_COMM & 0xff;
+    sendbuffer[2] = (msglen >> 8) & 0xff;
+    sendbuffer[3] = msglen & 0xff;
+    //for (u32 i = 0; i < msglen; i++)
+    //    sendbuffer[4+i] = buf[i];
+    memcpy(&sendbuffer[4], buf, msglen);
+    sendbuffer[4+msglen] = cks_u8(sendbuffer, len-1);
 
-	sci_txblock(buf, len);	//Payload
+    sci_txblock(sendbuffer, len);
 
-	cks = len;
-	cks += cks_u8(buf, len);
-	sci_txblock(&cks, 1);	//cks
+    //ugly : wait for transmission end; this means re-enabling RX won't pick up a partial byte
+    while (!NPK_SCI.SSR.BIT.TEND) {}
 
-	//ugly : wait for transmission end; this means re-enabling RX won't pick up a partial byte
-	while (!NPK_SCI.SSR.BIT.TEND) {}
-
-	NPK_SCI.SCR.BIT.RE = 1;
-	return;
+    NPK_SCI.SCR.BIT.RE = 1;
+    return;
 }
 
-
-
-/* transmit negative response, 0x7F <SID> <NRC>
- * Blocking
- */
-static void tx_7F(u8 sid, u8 nrc) {
-	u8 buf[3];
-	buf[0]=0x7F;
-	buf[1]=sid;
-	buf[2]=nrc;
-	iso_sendpkt(buf, 3);
-}
-
-
-static void iso_clearmsg(struct iso14230_msg *msg) {
-	msg->hdrlen = 0;
-	msg->datalen = 0;
-	msg->hi = 0;
-	msg->di = 0;
-}
 enum iso_prc { ISO_PRC_ERROR, ISO_PRC_NEEDMORE, ISO_PRC_DONE };
 /** Add newly-received byte to msg;
  *
@@ -496,588 +634,161 @@ enum iso_prc { ISO_PRC_ERROR, ISO_PRC_NEEDMORE, ISO_PRC_DONE };
  * Note : the *msg->hi, ->di, ->hdrlen, ->datalen memberes must be set to 0 before parsing a new message
  */
 
-static enum iso_prc iso_parserx(struct iso14230_msg *msg, u8 newbyte) {
-	u8 dl;
+enum iso_prc kline_get_message(u8 *msg, u8 newbyte)
+{
+    if (bufferindex == 0)
+    {
+        if (newbyte != 0xbe)
+            return ISO_PRC_ERROR;
+        msg[0] = newbyte;
+    }
+    else if (bufferindex == 1)
+    {
+        if (newbyte != 0xef)
+            return ISO_PRC_ERROR;
+        msg[1] = newbyte;
+    }
+    else if (bufferindex == 2)
+        msg[2] = newbyte;
+    else if (bufferindex == 3)
+    {
+        msg[3] = newbyte;
+        msglength = ((msg[2] << 8) & 0xff) + (msg[3] & 0xff);
+        msgindex = 0;
+    }
+    else if (bufferindex == 4)
+        msg[4] = newbyte;
 
-	// 1) new msg ?
-	if (msg->hi == 0) {
-		msg->hdrlen = 1;	//at least 1 byte (FMT)
+    if (bufferindex > 4 && msgindex <= msglength)
+    {
+        msgindex++;
+        msg[bufferindex] = newbyte;
 
-		//parse FMT byte
-		if ((newbyte & 0xC0) == 0x40) {
-			//CARB mode, not supported
-			return ISO_PRC_ERROR;
-		}
-		if (newbyte & 0x80) {
-			//addresses supplied
-			msg->hdrlen += 2;
-		}
-
-		dl = newbyte & 0x3f;
-		if (dl == 0) {
-			/* Additional length byte present */
-			msg->hdrlen += 1;
-		} else {
-			/* len-in-fmt : we can set length already */
-			msg->datalen = dl;
-		}
-	}
-
-	// 2) add to header if required
-	if (msg->hi != msg->hdrlen) {
-		msg->hdr[msg->hi] = newbyte;
-		msg->hi += 1;
-		// fetch LEN byte if applicable
-		if ((msg->datalen == 0) && (msg->hi == msg->hdrlen)) {
-			msg->datalen = newbyte;
-		}
-		return ISO_PRC_NEEDMORE;
-	}
-
-	// ) here, header is complete. Add to data
-	msg->data[msg->di] = newbyte;
-	msg->di += 1;
-
-	// +1 because we need checksum byte too
-	if (msg->di != (msg->datalen + 1)) {
-		return ISO_PRC_NEEDMORE;
-	}
-
-	// ) data now complete. valide cks
-	u8 cks = cks_u8(msg->hdr, msg->hdrlen);
-	cks += cks_u8(msg->data, msg->datalen);
-	if (cks == msg->data[msg->datalen]) {
-		return ISO_PRC_DONE;
-	}
-	return ISO_PRC_ERROR;
+        if (msgindex >= msglength)
+        {
+            //return ISO_PRC_DONE;
+            u8 cks = cks_u8(msg, bufferindex);
+            if (cks == msg[bufferindex])
+            {
+                msgindex = 0;
+                bufferindex = 0;
+                msglength = 0;
+                return ISO_PRC_DONE;
+            }
+            return ISO_PRC_ERROR;
+        }
+    }
+    bufferindex++;
+    return ISO_PRC_NEEDMORE;
 }
-
-
-/* Command state machine */
-static enum t_cmdsm {
-	CM_IDLE,		//not initted, only accepts the "startComm" request
-	CM_READY,		//initted, accepts all commands
-
-} cmstate;
-
-/* flash state machine */
-static enum t_flashsm {
-	FL_IDLE,
-	FL_READY,	//after doing init.
-} flashstate;
 
 /* initialize command parser state machine;
  * updates SCI settings : 62500 bps
  * beware the FER error flag, it disables further RX. So when changing BRR, if the host sends a byte
  * FER will be set, etc.
  */
-
-void cmd_init(u8 brrdiv) {
-	cmstate = CM_IDLE;
-	flashstate = FL_IDLE;
-	NPK_SCI.SCR.BYTE &= 0xCF;	//disable TX + RX
-	NPK_SCI.BRR = brrdiv;		// speed = (div + 1) * 625k
-	NPK_SCI.SSR.BYTE &= 0x87;	//clear RDRF + error flags
-	NPK_SCI.SCR.BYTE |= 0x30;	//enable TX+RX , no RX interrupts for now
-	return;
-}
-
-static void cmd_startcomm(void) {
-	// KW : noaddr;  len-in-fmt or lenbyte
-	static const u8 startcomm_resp[3] = {0xC1, 0x67, 0x8F};
-	iso_sendpkt(startcomm_resp, 3);
-	flashstate = FL_IDLE;
-}
-
-
-/* dump command processor, called from cmd_loop.
- * args[0] : address space (0: EEPROM, 1: ROM)
- * args[1,2] : # of 32-byte blocks
- * args[3,4] : (address / 32)
- *
- * EEPROM addresses are interpreted as the flattened memory, i.e. 93C66 set as 256 * 16bit will
- * actually be read as a 512 * 8bit array, so block #0 is bytes 0 to 31 == words 0 to 15.
- *
- * ex.: "00 00 02 00 01" dumps 64 bytes @ EEPROM 0x20 (== address 0x10 in 93C66)
- * ex.: "01 80 00 00 00" dumps 1MB of ROM@ 0x0
- *
- */
-static void cmd_dump(struct iso14230_msg *msg) {
-	u32 addr;
-	u32 len;
-	u8 space;
-	u8 *args = &msg->data[1];	//skip SID byte
-
-	if (msg->datalen != 6) {
-		tx_7F(SID_DUMP, ISO_NRC_SFNS_IF);
-		return;
-	}
-
-	space = args[0];
-	len = 32 * ((args[1] << 8) | args[2]);
-	addr = 32 * ((args[3] << 8) | args[4]);
-	switch (space) {
-		case EEPSCI3_PJ2: //SID_DUMP_SUB_EEPROM:
-		case EEPSCI3_PJ3:
-		case EEPSCI4_PF10:
-			EEPROM_SCI = space;
-			/* dump eeprom stuff */
-			addr /= 2;	/* modify address to fit with eeprom 256*16bit org */
-			len &= ~1;	/* align to 16bits */
-			while (len) {
-				uint16_t pbuf[17];
-				uint8_t *pstart;	//start of ISO packet
-				uint16_t *ebuf = &pbuf[1];	//cheat : form an ISO packet with the pos resp code in pbuf[0]
-
-				int pktlen;
-				int ecur;
-
-				pstart = (uint8_t *)(pbuf) + 1;
-				*pstart = SID_DUMP + 0x40;
-
-				pktlen = len;
-				if (pktlen > 32) pktlen = 32;
-
-				for (ecur = 0; ecur < (pktlen / 2); ecur += 1) {
-					eep_read16_sub((uint8_t) addr + ecur, (uint16_t *)&ebuf[ecur]);
-				}
-				iso_sendpkt(pstart, pktlen + 1);
-
-				len -= pktlen;
-				addr += (pktlen / 2);	//work in eeprom addresses
-			}
-			break;
-		case SID_DUMP_EEPROM:
-			/* dump eeprom stuff */
-			addr /= 2;	/* modify address to fit with eeprom 256*16bit org */
-			len &= ~1;	/* align to 16bits */
-			while (len) {
-				u16 pbuf[17];
-				u8 *pstart;	//start of ISO packet
-				u16 *ebuf=&pbuf[1];	//cheat : form an ISO packet with the pos resp code in pbuf[0]
-
-				int pktlen;
-				int ecur;
-
-				pstart = (u8 *)(pbuf) + 1;
-				*pstart = SID_DUMP + 0x40;
-
-				pktlen = len;
-				if (pktlen > 32) pktlen = 32;
-
-				for (ecur = 0; ecur < (pktlen / 2); ecur += 1) {
-                    eep_read16((uint8_t) addr + ecur, (uint16_t *)&ebuf[ecur]);
-				}
-				iso_sendpkt(pstart, pktlen + 1);
-
-				len -= pktlen;
-				addr += (pktlen / 2);	//work in eeprom addresses
-			}
-			break;
-		case SID_DUMP_ROM:
-			/* dump from ROM */
-			txbuf[0] = SID_DUMP + 0x40;
-			while (len) {
-				int pktlen;
-				pktlen = len;
-				if (pktlen > 32) pktlen = 32;
-				memcpy(&txbuf[1], (void *) addr, pktlen);
-				iso_sendpkt(txbuf, pktlen + 1);
-				len -= pktlen;
-				addr += pktlen;
-			}
-			break;
-		default:
-			tx_7F(SID_DUMP, ISO_NRC_SFNS_IF);
-			break;
-	}	//switch (space)
-
-	return;
-}
-
-
-/* SID 34 : prepare for reflashing */
-static void cmd_flash_init(void) {
-	u8 errval;
-
-	if (!platf_flash_init(&errval)) {
-		tx_7F(SID_FLREQ, errval);
-		return;
-	}
-
-	txbuf[0] = (SID_FLREQ + 0x40);
-	iso_sendpkt(txbuf, 1);
-	flashstate = FL_READY;
-	return;
-}
-
-/* "one's complement" checksum; if adding causes a carry, add 1 to sum. Slightly better than simple 8bit sum
- */
-static u8 cks_add8(u8 *data, unsigned len) {
-	u16 sum = 0;
-	for (; len; len--, data++) {
-		sum += *data;
-		if (sum & 0x100) sum += 1;
-		sum = (u8) sum;
-	}
-	return sum;
-}
-
-/* compare given CRC with calculated value.
- * data is the first byte after SID_CONF_CKS
- */
-static int cmd_romcrc(const u8 *data)
+void cmd_init(u8 brrdiv)
 {
-    uint32_t start = (*(data+0) << 16) | (*(data+1) << 8) | *(data+2);
-    uint32_t size = (*(data+3) << 16) | (*(data+4) << 8) | *(data+5);
-
-    uint32_t crc;
-    crc = crc32((const u8 *)start, size);
-
-    txbuf[0] = SID_CONF + 0x40;
-    txbuf[1] = SID_CONF_CKS;
-    txbuf[2] = ((crc >> 24) & 0xff);
-    txbuf[3] = ((crc >> 16) & 0xff);
-    txbuf[4] = ((crc >> 8) & 0xff);
-    txbuf[5] = (crc & 0xff);
-    iso_sendpkt(txbuf, 6);
-
-	return 0;
+    NPK_SCI.SCR.BYTE &= 0xCF;	// disable TX + RX
+    NPK_SCI.BRR = brrdiv;		// speed = (div + 1) * 625k
+    NPK_SCI.SSR.BYTE &= 0x87;	// clear RDRF + error flags
+    NPK_SCI.SCR.BYTE |= 0x30;	// enable TX+RX , no RX interrupts for now
+    return;
 }
-
-/* handle low-level reflash commands */
-static void cmd_flash_utils(struct iso14230_msg *msg) {
-	u8 subcommand;
-	u32 tmp;
-
-	u32 rv = ISO_NRC_GR;
-
-	if (flashstate != FL_READY) {
-		rv = ISO_NRC_CNCORSE;
-		goto exit_bad;
-	}
-
-	if (msg->datalen <= 1) {
-		rv = ISO_NRC_SFNS_IF;
-		goto exit_bad;
-	}
-
-	subcommand = msg->data[1];
-
-	switch(subcommand) {
-	case SIDFL_EB:
-		//format : <SID_FLASH> <SIDFL_EB> <BLOCKNO>
-		if (msg->datalen != 3) {
-			rv = ISO_NRC_SFNS_IF;
-			goto exit_bad;
-		}
-        u32 flashaddr = 0;
-        rv = platf_flash_eb(flashaddr); // THIS WAS BLOCKNO
-		if (rv) {
-			rv = (rv & 0xFF) | 0x80;	//make sure it's a valid extented NRC
-			goto exit_bad;
-		}
-		break;
-	case SIDFL_WB:
-		//format : <SID_FLASH> <SIDFL_WB> <A2> <A1> <A0> <D0>...<D127> <CRC>
-		if (msg->datalen != (SIDFL_WB_DLEN + 6)) {
-			rv = ISO_NRC_SFNS_IF;
-			goto exit_bad;
-		}
-
-		if (cks_add8(&msg->data[2], (SIDFL_WB_DLEN + 3)) != msg->data[SIDFL_WB_DLEN + 5]) {
-			rv = SID_CONF_CKS1_BADCKS;	//crcerror
-			goto exit_bad;
-		}
-
-		tmp = (msg->data[2] << 16) | (msg->data[3] << 8) | msg->data[4];
-		rv = platf_flash_wb(tmp, (u32) &msg->data[5], SIDFL_WB_DLEN);
-		if (rv) {
-			rv = (rv & 0xFF) | 0x80;	//make sure it's a valid extented NRC
-			goto exit_bad;
-		}
-		break;
-	case SIDFL_UNPROTECT:
-		//format : <SID_FLASH> <SIDFL_UNPROTECT> <~SIDFL_UNPROTECT>
-		if (msg->datalen != 3) {
-			rv = ISO_NRC_SFNS_IF;
-			goto exit_bad;
-		}
-		if (msg->data[2] != (u8) ~SIDFL_UNPROTECT) {
-			rv = ISO_NRC_IK;	//InvalidKey
-			goto exit_bad;
-		}
-
-		platf_flash_unprotect();
-		break;
-	default:
-		rv = ISO_NRC_SFNS_IF;
-		goto exit_bad;
-		break;
-	}
-
-	txbuf[0] = SID_FLASH + 0x40;
-	iso_sendpkt(txbuf, 1);	//positive resp
-	return;
-
-exit_bad:
-	tx_7F(SID_FLASH, rv);
-	return;
-}
-
-
-/* ReadMemByAddress */
-static void cmd_rmba(struct iso14230_msg *msg) {
-	//format : <SID_RMBA> <AH> <AM> <AL> <SIZ>
-	/* response : <SID + 0x40> <D0>....<Dn> <AH> <AM> <AL> */
-
-	u32 addr;
-	int siz;
-
-	if (msg->datalen != 5) goto bad12;
-	siz = msg->data[4];
-
-	if ((siz == 0) || (siz > 251)) goto bad12;
-
-	addr = reconst_24(&msg->data[1]);
-
-	txbuf[0] = SID_RMBA + 0x40;
-	memcpy(txbuf + 1, (void *) addr, siz);
-
-	siz += 1;
-	txbuf[siz++] = msg->data[1];
-	txbuf[siz++] = msg->data[2];
-	txbuf[siz++] = msg->data[3];
-
-	iso_sendpkt(txbuf, siz);
-	return;
-
-bad12:
-	tx_7F(SID_RMBA, ISO_NRC_SFNS_IF);
-	return;
-}
-
-
-/* WriteMemByAddr - RAM only */
-static void cmd_wmba(struct iso14230_msg *msg) {
-	/* WriteMemByAddress (RAM only !) . format : <SID_WMBA> <AH> <AM> <AL> <SIZ> <DATA> , siz <= 250. */
-	/* response : <SID + 0x40> <AH> <AM> <AL> */
-	u8 rv = ISO_NRC_SFNS_IF;
-	u32 addr;
-	u8 siz;
-	u8 *src;
-
-	if (msg->datalen < 6) goto badexit;
-	siz = msg->data[4];
-
-	if (	(siz == 0) ||
-		(siz > 250) ||
-		(msg->datalen != (siz + 5))) goto badexit;
-
-	addr = reconst_24(&msg->data[1]);
-
-	// bounds check, restrict to RAM
-	if (	(addr < RAM_MIN) ||
-		(addr > RAM_MAX)) {
-		rv = ISO_NRC_CNDTSA; /* canNotDownloadToSpecifiedAddress */
-		goto badexit;
-	}
-
-	/* write */
-	src = &msg->data[5];
-	memcpy((void *) addr, src, siz);
-
-	msg->data[0] = SID_WMBA + 0x40;	//cheat !
-	iso_sendpkt(msg->data, 4);
-	return;
-
-badexit:
-	tx_7F(SID_WMBA, rv);
-	return;
-}
-
-/* set & configure kernel */
-static void cmd_conf(struct iso14230_msg *msg) {
-	u8 resp[4];
-	u32 tmp;
-
-	resp[0] = SID_CONF + 0x40;
-	if (msg->datalen < 2) goto bad12;
-
-	switch (msg->data[1]) {
-	case SID_CONF_SETSPEED:
-		/* set comm speed (BRR divisor reg) : <SID_CONF> <SID_CONF_SETSPEED> <new divisor> */
-		iso_sendpkt(resp, 1);
-		cmd_init(msg->data[2]);
-		sci_rxidle(25);
-		return;
-		break;
-	case SID_CONF_SETEEPR:
-		/* set eeprom_read() function address <SID_CONF> <SID_CONF_SETEEPR> <AH> <AM> <AL> */
-		if (msg->datalen != 5) goto bad12;
-		tmp = (msg->data[2] << 16) | (msg->data[3] << 8) | msg->data[4];
-		eep_setptr(tmp);
-		iso_sendpkt(resp, 1);
-		return;
-		break;
-    case SID_CONF_CKS:
-        //<SID_CONF> <SID_CONF_CKS> <ADDR 3bytes> <SIZE 3bytes>
-        if (msg->datalen != 8) {
-			goto bad12;
-		}
-		if (cmd_romcrc(&msg->data[2])) {
-            //tx_7F(SID_CONF, SID_CONF_CKS1_BADCKS);
-			return;
-		}
-        //iso_sendpkt(resp, 1);
-		return;
-		break;
-	case SID_CONF_LASTERR:
-		resp[1] = lasterr;
-		lasterr = 0;
-		iso_sendpkt(resp, 2);
-		return;
-		break;
-#ifdef DIAG_U16READ
-	case SID_CONF_R16:
-		{
-		u16 val;
-		//<SID_CONF> <SID_CONF_R16> <A2> <A1> <A0>
-		tmp = reconst_24(&msg->data[2]);
-		tmp &= ~1;	//clr lower bit of course
-		val = *(const u16 *) tmp;
-		resp[1] = val >> 8;
-		resp[2] = val & 0xFF;
-		iso_sendpkt(resp,3);
-		return;
-		break;
-		}
-#endif
-	default:
-		goto bad12;
-		break;
-	}
-
-bad12:
-	tx_7F(SID_CONF, ISO_NRC_SFNS_IF);
-	return;
-}
-
 
 /* command parser; infinite loop waiting for commands.
  * not sure if it's worth the trouble to make this async,
  * what other tasks could run in background ? reflash shit ?
  *
- * This receives valid iso14230 packets; message splitting is by pkt length
+ * This receives valid iso9141 packets; message splitting is by pkt length
  */
-void cmd_loop(void) {
-	u8 rxbyte;
+void cmd_loop(void)
+{
+    u16 startcode = 0;
+    u8 cmd = 0;
+    u8 rxbyte = 0;
 
-	static struct iso14230_msg msg;
-
-	//u32 t_last, t_cur;	//timestamps
-
-	iso_clearmsg(&msg);
-
-	while (1) {
+    while (1)
+    {
 		enum iso_prc prv;
 
 		/* in case of errors (ORER | FER | PER), reset state mach. */
-		if (NPK_SCI.SSR.BYTE & 0x38) {
-
-			cmstate = CM_IDLE;
-			flashstate = FL_IDLE;
-			iso_clearmsg(&msg);
-			sci_rxidle(MAX_INTERBYTE);
+        if (NPK_SCI.SSR.BYTE & 0x38)
+        {
+            memset(databuffer, 0, datablocksize);
+            memset(txbuf, 0, 256);
+            //sci_rxidle(MAX_INTERBYTE);
 			continue;
 		}
 
-		if (!NPK_SCI.SSR.BIT.RDRF) continue;
+        if (!NPK_SCI.SSR.BIT.RDRF)
+            continue;
 
 		rxbyte = NPK_SCI.RDR;
 		NPK_SCI.SSR.BIT.RDRF = 0;
 
-		//t_cur = get_mclk_ts();	/* XXX TODO : filter out interrupted messages with t>5ms interbyte ? */
-
 		/* got a byte; parse according to state */
-		prv = iso_parserx(&msg, rxbyte);
+        prv = kline_get_message(databuffer, rxbyte);
 
-		if (prv == ISO_PRC_NEEDMORE) {
+        if (prv == ISO_PRC_NEEDMORE)
+            continue;
+
+        if (prv != ISO_PRC_DONE) {
+            memset(databuffer, 0, datablocksize);
+            memset(txbuf, 0, 256);
+            //sci_rxidle(MAX_INTERBYTE);
 			continue;
 		}
-		if (prv != ISO_PRC_DONE) {
-			iso_clearmsg(&msg);
-			sci_rxidle(MAX_INTERBYTE);
-			continue;
-		}
-		/* here, we have a complete iso frame */
 
-		switch (cmstate) {
-		case CM_IDLE:
-			/* accept only startcomm requests */
-			if (msg.data[0] == SID_STARTCOMM) {
-				cmd_startcomm();
-				cmstate = CM_READY;
-			}
-			iso_clearmsg(&msg);
-			break;
+        delay(500);
 
-		case CM_READY:
-			switch (msg.data[0]) {
-			case SID_STARTCOMM:
-				cmd_startcomm();
-				iso_clearmsg(&msg);
-				break;
-			case SID_RECUID:
-                iso_sendpkt(kernel_id_string, sizeof(kernel_id_string));
-				iso_clearmsg(&msg);
-				break;
-			case SID_CONF:
-				cmd_conf(&msg);
-				iso_clearmsg(&msg);
-				break;
-			case SID_RESET:
-				/* ECUReset */
-				txbuf[0] = msg.data[0] + 0x40;
-				iso_sendpkt(txbuf, 1);
-				die();
-				break;
-			case SID_RMBA:
-				cmd_rmba(&msg);
-				iso_clearmsg(&msg);
-				break;
-			case SID_WMBA:
-				cmd_wmba(&msg);
-				iso_clearmsg(&msg);
-				break;
-			case SID_DUMP:
-				cmd_dump(&msg);
-				iso_clearmsg(&msg);
-				break;
-			case SID_FLASH:
-				cmd_flash_utils(&msg);
-				iso_clearmsg(&msg);
-				break;
-			case SID_TP:
-				txbuf[0] = msg.data[0] + 0x40;
-				iso_sendpkt(txbuf, 1);
-				iso_clearmsg(&msg);
-				break;
-			case SID_FLREQ:
-				cmd_flash_init();
-				iso_clearmsg(&msg);
-				break;
-			default:
-				tx_7F(msg.data[0], ISO_NRC_SNS);
-				iso_clearmsg(&msg);
-				break;
-			}	//switch (SID)
-			break;
-		default :
-			//invalid state, or nothing special to do
-			break;
-		}	//switch (cmstate)
-	}	//while 1
+        /* here, we have a complete iso frame */
+        startcode = (databuffer[0] << 8) | (databuffer[1] & 0xff);
+        if(startcode == SUB_KERNEL_START_COMM)
+        {
+            cmd = databuffer[4] & 0xFF;
+            switch(cmd)
+            {
+                case SUB_KERNEL_ID:
+                    cmd_request_ecuid(databuffer);
+                    break;
+
+                case SUB_KERNEL_READ_AREA: // 0x03 Read ROM data
+                    cmd_read_area(databuffer);
+                    break;
+
+                case SID_RESET:
+                    /* ECUReset */
+                    txbuf[0] = (cmd | 0x40);
+                    kline_send_message(txbuf, 1);
+                    die();
+                    break;
+
+                default:
+                    databuffer[0] = 0x7F;
+                    databuffer[1] = databuffer[5];
+                    databuffer[2] = 0x34;   // Unrecognised argument
+                    kline_send_message(databuffer, 3);
+                    break;
+            }
+        }
+        else
+        {
+            if ((databuffer[4] == 0xFF) && (databuffer[5] == 0xC8))
+            {
+                databuffer[0] = 0xFF;
+                databuffer[1] = 0xC8;
+                kline_send_message(databuffer, 2);
+                die();
+            }
+            txbuf[0] = 0x7F;
+            memcpy(&txbuf[1], databuffer, 16);
+            txbuf[17] = 0x35;    // Unrecognised command
+            kline_send_message(txbuf, 18);
+        }
+        memset(databuffer, 0, datablocksize);
+        memset(txbuf, 0, 256);
+    }
 
 	die();
 }
@@ -1097,11 +808,11 @@ void cmd_loop(void) {
 
 #ifndef KLINE
 
-#define datablocksize 0x210
+#define datablocksize 0x410
 
 static u8 candatabuffer[datablocksize];
 static u32 flashaddr = 0;
-static u32 flashbuffercounter = 0;
+static u32 flashbufferindex = 0;
 
 static void can_idle(unsigned us) {
 	u32 t0, tc, intv;
@@ -1334,9 +1045,6 @@ static void can_tx8bytes(const u8 *buf)
 			#endif
 		#endif
 	#endif
-	#ifndef ssmk
-        u8 *buf_temp = buf;
-    #endif
  }
 
 static void can_cmd_max_msg_size(u8 *msg)
@@ -1467,6 +1175,8 @@ static void can_cmd_flash_init(u8 *msg)
     u32 rv = 0;
     u16 datalen = (msg[2] << 8) | msg[3];
 
+    flashbufferindex = 0;
+
     if (datalen != 5)
     {
         candatabuffer[0] = 0x7F;
@@ -1515,11 +1225,10 @@ static void can_cmd_write_flash_buffer(u8 *msg)
         return;
     }
 
-    // this is probably faster than memcpy
-    memcpy(&flashbuffer[flashbuffercounter], &candatabuffer[9], flashmessagesize);
-    flashbuffercounter += flashmessagesize;
-    if (flashbuffercounter >= flashbuffersize)
-        flashbuffercounter = 0;
+    memcpy(&flashbuffer[flashbufferindex], &candatabuffer[9], flashmessagesize);
+    flashbufferindex += flashmessagesize;
+    if (flashbufferindex >= flashbuffersize)
+        flashbufferindex = 0;
 
     candatabuffer[0] = (msg[4] | 0x40);
     can_send_message(candatabuffer, 1);
@@ -1533,7 +1242,7 @@ static void can_cmd_write_flash_buffer(u8 *msg)
  */
 static void can_cmd_validate_flash_buffer(u8 *msg)
 {
-    u32 addr;
+    //u32 addr;
     u32 len;
     u32 img_crc32;
     u32 rom_crc32;
@@ -1548,7 +1257,7 @@ static void can_cmd_validate_flash_buffer(u8 *msg)
         return;
     }
 
-    addr = (msg[5] << 24) | (msg[6] << 16) | (msg[7] << 8) | msg[8];
+    //addr = (msg[5] << 24) | (msg[6] << 16) | (msg[7] << 8) | msg[8];
     len = (msg[9] << 8) | msg[10];
     img_crc32 = (msg[11] << 24) | (msg[12] << 16) | (msg[13] << 8) | msg[14];
 
@@ -1621,17 +1330,20 @@ static void can_cmd_commit_flash_buffer(u8 *msg)
 
     candatabuffer[0] = 0x7F;
     candatabuffer[1] = msg[4];
-    can_send_message(candatabuffer, 2);
+    candatabuffer[2] = (rom_crc32 >> 24) & 0xff;
+    candatabuffer[3] = (rom_crc32 >> 16) & 0xff;
+    candatabuffer[4] = (rom_crc32 >> 8) & 0xff;
+    candatabuffer[5] = rom_crc32 & 0xff;
+    can_send_message(candatabuffer, 6);
 
     return;
 }
 
-/* kernelid command processor, 0x1A command, called from cmd_loop.
- * args[0,1] : 0x7A and SID
- *
- *
- *
+/*
+ * Kernel ID command processor, 0x01 command, called from cmd_loop.
+ * args[0] : 0x01
  */
+/*
 static void can_cmd_request_ecuid(u8 *msg)
 {
     u16 datalen = (msg[2] << 8) | msg[3];
@@ -1653,6 +1365,7 @@ static void can_cmd_request_ecuid(u8 *msg)
 
 	return;
 }
+*/
 
 /* checksum command processor, 0xD0 command, called from cmd_loop.
  * args[0,1] : 0x7A and SID
@@ -1754,6 +1467,7 @@ static void can_cmd_read_eeprom(u8 *msg) {
  * ex.: "7A DE 00 10 00 00 00 00" dumps 1MB of ROM@ 0x0
  *
  */
+/*
 static void can_cmd_read_area(u8 *msg)
 {
 	u32 addr;
@@ -1777,6 +1491,7 @@ static void can_cmd_read_area(u8 *msg)
 
     return;
 }
+*/
 
 int can_send_message(u8 *msg, u32 msglen)
 {
@@ -1925,6 +1640,46 @@ int can_get_message(u8 *msg)
     return rv;
 }
 
+#ifdef CAN
+void set_mailbox(void)
+{
+	#ifdef SH7055
+		// TX MB1, RX MB0
+        u16 can_id = (((NPK_CAN.MC[0][5] << 8) & 0xff00) | (NPK_CAN.MC[0][4] & 0xff));
+		can_id &= ~(0x7ff << 5);
+        can_id &= 0xfff0;
+        can_id |= (0x7e0 << 5);
+		NPK_CAN.MC[0][7] = 0x00;
+		NPK_CAN.MC[0][6] = 0x00;
+		NPK_CAN.MC[0][5] = ((can_id >> 8) & 0xff);
+		NPK_CAN.MC[0][4] = (can_id & 0xff);
+
+	    can_id = (((NPK_CAN.MC[1][5] << 8) & 0xff00) | (NPK_CAN.MC[1][4] & 0xff));
+		can_id &= ~(0x7ff << 5);
+        can_id &= 0xfff0;
+        can_id |= (0x7e8 << 5);
+		NPK_CAN.MC[1][7] = 0x00;
+		NPK_CAN.MC[1][6] = 0x00;
+		NPK_CAN.MC[1][5] = ((can_id >> 8) & 0xff);
+		NPK_CAN.MC[1][4] = (can_id & 0xff);
+	#else
+        u16 can_id = NPK_CAN.MB[0].CTRLH.WORD;
+        can_id &= ~(0x7ff << 4);
+        can_id &= 0xfff8;
+        can_id |= (0x7e0 << 4);
+        NPK_CAN.MB[0].CTRLH.WORD = can_id;
+        NPK_CAN.MB[0].CTRLM.WORD = 0;
+
+        can_id = NPK_CAN.MB[1].CTRLH.WORD;
+        can_id &= ~(0x7ff << 4);
+        can_id &= 0xfff8;
+        can_id |= (0x7e8 << 4);
+        NPK_CAN.MB[1].CTRLH.WORD = can_id;
+        NPK_CAN.MB[1].CTRLM.WORD = 0;
+    #endif
+}
+#endif
+
 void can_cmd_loop(void)
 {
     u16 startcode;
@@ -1933,6 +1688,13 @@ void can_cmd_loop(void)
     //bool loadingblocks = false;
     //counter8byteblock = 0;
 
+    #if defined(CAN)
+        set_mailbox();
+    #endif
+
+    flashbufferindex = 0;
+    memset(candatabuffer, 0, datablocksize);
+    memset(txbuf, 0, 256);
 
     while (1)
     {
@@ -1949,25 +1711,13 @@ void can_cmd_loop(void)
         }
 
         startcode = (candatabuffer[0] << 8) | (candatabuffer[1] & 0xff);
-        /*
-        if (loadingblocks)
-		{
-            can_cmd_load8bytes(candatabuffer);
-			counter8byteblock++;
-			if (counter8byteblock > 15)
-			{
-				counter8byteblock = 0;
-				loadingblocks = false;
-			}
-		}
-        else if(startcode == SUB_KERNEL_START_COMM)*/
         if(startcode == SUB_KERNEL_START_COMM)
         {
             cmd = candatabuffer[4] & 0xFF;
             switch(cmd)
 			{
                 case SUB_KERNEL_ID: // 0x01 Request kernel ID
-                    can_cmd_request_ecuid(candatabuffer);
+                    cmd_request_ecuid(candatabuffer);
 					break;
 
                 case SUB_KERNEL_CRC: // 0x02 Request CRC32 checksum
@@ -1975,7 +1725,7 @@ void can_cmd_loop(void)
 					break;
 
                 case SUB_KERNEL_READ_AREA: // 0x03 Read ROM data
-                    can_cmd_read_area(candatabuffer);
+                    cmd_read_area(candatabuffer);
 					break;
 
                 case SUB_KERNEL_PROG_VOLT: // 0x04 Read programming voltage
@@ -2022,7 +1772,7 @@ void can_cmd_loop(void)
                 default:
                     candatabuffer[0] = 0x7F;
                     candatabuffer[1] = candatabuffer[4];
-                    candatabuffer[2] = 0x34;   // unrecognised 0x7A command
+                    candatabuffer[2] = 0x34;   // Unrecognised argument
                     can_send_message(candatabuffer, 3);
                     break;
 			}
@@ -2037,7 +1787,7 @@ void can_cmd_loop(void)
                 die();
 			}
             txbuf[0] = 0x7F;
-            txbuf[1] = 0x35;    // unrecognised command (non 0x7A)
+            txbuf[1] = 0x35;    // Unrecognised command
             memcpy(&txbuf[2], candatabuffer, 16);
             can_send_message(txbuf, 18);
         }

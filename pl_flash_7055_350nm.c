@@ -347,14 +347,14 @@ uint32_t platf_flash_eb(u32 addr) {
 
 /*********** Write ***********/
 
-/** Copy flashblocksize-byte chunk + apply write pulse for tsp=10/30/200us as specified
+/** Copy flashchunksize-byte chunk + apply write pulse for tsp=10/30/200us as specified
  */
 static void writepulse(volatile u8 *dest, u8 *src, unsigned tsp) {
 	unsigned uim;
 	u32 cur;
 
 	//can't use memcpy because these must be byte transfers
-    for (cur = 0; cur < flashbuffersize; cur++) {
+    for (cur = 0; cur < flashchunksize; cur++) {
 		dest[cur] = src[cur];
 	}
 
@@ -381,9 +381,9 @@ static void writepulse(volatile u8 *dest, u8 *src, unsigned tsp) {
  * assumes params are ok, and that block was already erased
  */
 static u32 flash_write(u32 dest, u32 src_unaligned) {
-    u8 src[flashbuffersize] __attribute ((aligned (4)));	// aligned copy of desired data
-    u8 reprog[flashbuffersize] __attribute ((aligned (4)));	// retry / reprogram data
-    u8 addit[flashbuffersize] __attribute ((aligned (4)));	// overwrite / additional data
+    u8 src[flashchunksize] __attribute ((aligned (4)));	// aligned copy of desired data
+    u8 reprog[flashchunksize] __attribute ((aligned (4)));	// retry / reprogram data
+    u8 addit[flashchunksize] __attribute ((aligned (4)));	// overwrite / additional data
 
 	unsigned n;
 	bool m;
@@ -399,8 +399,8 @@ static u32 flash_write(u32 dest, u32 src_unaligned) {
 		return PF_ERROR;
 	}
 
-    memcpy(src, (void *) src_unaligned, flashbuffersize);
-    memcpy(reprog, (void *) src, flashbuffersize);
+    memcpy(src, (void *) src_unaligned, flashchunksize);
+    memcpy(reprog, (void *) src, flashchunksize);
 
 	sweset();
 	WDT.WRITE.TCSR = WDT_TCSR_STOP;
@@ -423,7 +423,7 @@ static u32 flash_write(u32 dest, u32 src_unaligned) {
 		*pFLMCR |= FLMCR_PV;
 		waitn(TSPV);
 
-        for (cur = 0; cur < flashbuffersize; cur += 4) {
+        for (cur = 0; cur < flashchunksize; cur += 4) {
 			u32 verifdata;
 			u32 srcdata;
 			u32 just_written;
@@ -485,14 +485,16 @@ badexit:
 
 uint32_t platf_flash_wb(uint32_t dest, uint32_t src, uint32_t len)
 {
+	uint32_t rv = 0;
+	
 	if (dest > FL_MAXROM) return PFWB_OOB;
-    if (dest & (flashbuffersize-1)) return PFWB_MISALIGNED;	//dest not aligned on flashblocksize bytes boundary
-    if (len & (flashbuffersize-1)) return PFWB_LEN;	//must be multiple of flashblocksize bytes too
+    if (dest & (flashchunksize-1)) return PFWB_MISALIGNED;	//dest not aligned on flashchunksize bytes boundary
+    if (len & (flashchunksize-1)) return PFWB_LEN;	//must be multiple of flashchunksize bytes too
 
 	if (!reflash_enabled) return 0;	//pretend success
 
 	while (len) {
-		uint32_t rv = 0;
+		rv = 0;
 
 		rv = flash_write(dest, src);
 
@@ -500,9 +502,12 @@ uint32_t platf_flash_wb(uint32_t dest, uint32_t src, uint32_t len)
 			return (rv & 0x06) | PF_FPFR_BASE;	//tweak into valid NRC
 		}
 
-        dest += flashbuffersize;
-        src += flashbuffersize;
-        len -= flashbuffersize;
+        if (memcmp((void *)dest, (void *)src, flashchunksize) != 0)
+            return PFWB_VERIFAIL;
+
+		dest += flashchunksize;
+        src += flashchunksize;
+        len -= flashchunksize;
 	}
 	return 0;
 }
@@ -557,12 +562,10 @@ bool platf_flash_init(u8 *err) {
 }
 
 void platf_flash_protect(void) {
-    PFC.PDIOR.WORD &= ~0x0100;
     reflash_enabled = 0;
 }
 
 void platf_flash_unprotect(void) {
-    PFC.PDIOR.WORD |= 0x0100;
     reflash_enabled = 1;
 }
 

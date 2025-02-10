@@ -19,15 +19,20 @@
 
 #include "stypes.h"
 
-
+//#define KLINE
+#if defined(KLINE)
 /****************************
  *
  * K-Line functions
  *
  ****************************/
+void kline_send_message(u8 *msg, u32 len);
+enum iso_prc kline_get_message(u8 *msg, u8 newbyte);
 void cmd_init(u8 brrdiv);
 void cmd_loop(void);
+#endif
 
+#ifndef KLINE
 /****************************
  *
  * CAN / ISO15765 functions
@@ -36,3 +41,4 @@ void cmd_loop(void);
 int can_send_message(u8 *msg, u32 len);
 int can_get_message(u8 *msg);
 void can_cmd_loop(void);
+#endif
