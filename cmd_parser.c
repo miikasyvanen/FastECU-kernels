@@ -357,9 +357,9 @@ static uint32_t __attribute__ ((noinline)) eep_write16_sub(uint8_t addr, uint8_t
 
 #define datablocksize   0x410
 static u8 databuffer[datablocksize];
-//#ifdef KLINE
-//static u8 sendbuffer[datablocksize];
-//#endif
+#ifdef KLINE
+static u8 sendbuffer[datablocksize];
+#endif
 static u32 flashaddr = 0;
 static u32 flashbufferindex = 0;
 
@@ -867,17 +867,46 @@ void kline_send_message(u8 *buf, u32 msglen)
 
     uint32_t len = msglen + 5;
 
+    sendbuffer[0] = (SUB_KERNEL_START_COMM >> 8) & 0xff;
+    sendbuffer[1] = SUB_KERNEL_START_COMM & 0xff;
+    sendbuffer[2] = (msglen >> 8) & 0xff;
+    sendbuffer[3] = msglen & 0xff;
+    //for (u32 i = 0; i < msglen; i++)
+    //    sendbuffer[4+i] = buf[i];
+    memcpy(&sendbuffer[4], buf, msglen);
+    sendbuffer[4+msglen] = cks_u8(sendbuffer, len-1);
+    sci_txblock(sendbuffer, len);
+
+/*
+    uint32_t bytes_to_send = 8;
+    uint8_t cks = 0;
+    u8 txbuf[8];
+
     txbuf[0] = (SUB_KERNEL_START_COMM >> 8) & 0xff;
     txbuf[1] = SUB_KERNEL_START_COMM & 0xff;
     txbuf[2] = (msglen >> 8) & 0xff;
     txbuf[3] = msglen & 0xff;
-    //for (u32 i = 0; i < msglen; i++)
-    //    txbuf[4+i] = buf[i];
-    memcpy(&txbuf[4], buf, msglen);
-    txbuf[4+msglen] = cks_u8(txbuf, len-1);
+    memcpy(&txbuf[4], buf, 4);
+    cks += cks_u8(txbuf, 8);
+    sci_txblock(txbuf, 8);
 
+    msglen -= 4;
+    buf += 4;
+    while (msglen > 0)
+    {
+        bytes_to_send = 8;
+        if (msglen < 8)
+            bytes_to_send = msglen;
+        memcpy(txbuf, buf, bytes_to_send);
+        cks += cks_u8(txbuf, bytes_to_send);
+
+        sci_txblock(txbuf, 8);
+        msglen -= bytes_to_send;
+        buf += bytes_to_send;
+    }
+    txbuf[0] = cks;
     sci_txblock(txbuf, len);
-
+*/
     //ugly : wait for transmission end; this means re-enabling RX won't pick up a partial byte
     while (!NPK_SCI.SSR.BIT.TEND) {}
 
@@ -969,10 +998,6 @@ void cmd_loop(void)
     u8 cmd = 0;
     u8 rxbyte = 0;
 
-    bufferindex = 0;
-    msgindex = 0;
-    msglength = 0;
-
     while (1)
     {
 		enum iso_prc prv;
@@ -1005,7 +1030,7 @@ void cmd_loop(void)
 			continue;
 		}
 
-        delay(500);
+        delay(5000);
 
         /* here, we have a complete iso frame */
         startcode = (databuffer[0] << 8) | (databuffer[1] & 0xff);
@@ -1523,7 +1548,7 @@ void can_cmd_loop(void)
         {
             databuffer[0] = 0x7F;
             databuffer[1] = 0x36;   // no unread message available error
-            can_send_message(databuffer, 2);
+            send_message(databuffer, 2);
             continue;
         }
 
@@ -1590,7 +1615,7 @@ void can_cmd_loop(void)
                     databuffer[0] = 0x7F;
                     databuffer[1] = databuffer[4];
                     databuffer[2] = 0x34;   // Unrecognised argument
-                    can_send_message(databuffer, 3);
+                    send_message(databuffer, 3);
                     break;
 			}
 		}
@@ -1600,13 +1625,13 @@ void can_cmd_loop(void)
 			{
                 databuffer[0] = 0xFF;
                 databuffer[1] = 0xC8;
-                can_send_message(databuffer, 2);
+                send_message(databuffer, 2);
                 die();
 			}
             txbuf[0] = 0x7F;
             txbuf[1] = 0x35;    // Unrecognised command
             memcpy(&txbuf[2], databuffer, 16);
-            can_send_message(txbuf, 18);
+            send_message(txbuf, 18);
         }
         memset(databuffer, 0, datablocksize);
         memset(txbuf, 0, 256);

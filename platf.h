@@ -28,7 +28,12 @@
 
 #define flashbuffersize 0x1000
 #define flashchunksize 0x80
+#ifndef KLINE
 #define flashmessagesize 0x200
+#endif
+#ifdef KLINE
+#define flashmessagesize 0x80
+#endif
 
 u8 flashbuffer[flashbuffersize];
 
