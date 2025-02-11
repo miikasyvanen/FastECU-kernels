@@ -37,12 +37,13 @@ int main(void) {
 
 #if defined(KLINE)
 	cmd_init(SCI_DEFAULTDIV);
-	cmd_loop();
+    //cmd_loop();
 #elif defined(CAN)
-	can_cmd_loop();
+    //can_cmd_loop();
 #elif defined(CAN_TP)
-	can_cmd_loop();
+    //can_cmd_loop();
 #endif
+    cmd_loop();
 
 	//we should never get here; if so : die
 	die();

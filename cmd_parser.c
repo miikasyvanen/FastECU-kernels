@@ -877,36 +877,6 @@ void kline_send_message(u8 *buf, u32 msglen)
     sendbuffer[4+msglen] = cks_u8(sendbuffer, len-1);
     sci_txblock(sendbuffer, len);
 
-/*
-    uint32_t bytes_to_send = 8;
-    uint8_t cks = 0;
-    u8 txbuf[8];
-
-    txbuf[0] = (SUB_KERNEL_START_COMM >> 8) & 0xff;
-    txbuf[1] = SUB_KERNEL_START_COMM & 0xff;
-    txbuf[2] = (msglen >> 8) & 0xff;
-    txbuf[3] = msglen & 0xff;
-    memcpy(&txbuf[4], buf, 4);
-    cks += cks_u8(txbuf, 8);
-    sci_txblock(txbuf, 8);
-
-    msglen -= 4;
-    buf += 4;
-    while (msglen > 0)
-    {
-        bytes_to_send = 8;
-        if (msglen < 8)
-            bytes_to_send = msglen;
-        memcpy(txbuf, buf, bytes_to_send);
-        cks += cks_u8(txbuf, bytes_to_send);
-
-        sci_txblock(txbuf, 8);
-        msglen -= bytes_to_send;
-        buf += bytes_to_send;
-    }
-    txbuf[0] = cks;
-    sci_txblock(txbuf, len);
-*/
     //ugly : wait for transmission end; this means re-enabling RX won't pick up a partial byte
     while (!NPK_SCI.SSR.BIT.TEND) {}
 
@@ -992,134 +962,6 @@ void cmd_init(u8 brrdiv)
  *
  * This receives valid iso9141 packets; message splitting is by pkt length
  */
-void cmd_loop(void)
-{
-    u16 startcode = 0;
-    u8 cmd = 0;
-    u8 rxbyte = 0;
-
-    while (1)
-    {
-		enum iso_prc prv;
-
-		/* in case of errors (ORER | FER | PER), reset state mach. */
-        if (NPK_SCI.SSR.BYTE & 0x38)
-        {
-            memset(databuffer, 0, datablocksize);
-            memset(txbuf, 0, 256);
-            //sci_rxidle(MAX_INTERBYTE);
-			continue;
-		}
-
-        if (!NPK_SCI.SSR.BIT.RDRF)
-            continue;
-
-		rxbyte = NPK_SCI.RDR;
-		NPK_SCI.SSR.BIT.RDRF = 0;
-
-		/* got a byte; parse according to state */
-        prv = kline_get_message(databuffer, rxbyte);
-
-        if (prv == ISO_PRC_NEEDMORE)
-            continue;
-
-        if (prv != ISO_PRC_DONE) {
-            memset(databuffer, 0, datablocksize);
-            memset(txbuf, 0, 256);
-            //sci_rxidle(MAX_INTERBYTE);
-			continue;
-		}
-
-        delay(5000);
-
-        /* here, we have a complete iso frame */
-        startcode = (databuffer[0] << 8) | (databuffer[1] & 0xff);
-        if(startcode == SUB_KERNEL_START_COMM)
-        {
-            cmd = databuffer[4] & 0xFF;
-            switch(cmd)
-            {
-                case SUB_KERNEL_ID: // 0x01 Request kernel ID
-                    cmd_request_ecuid(databuffer);
-                    break;
-
-                case SUB_KERNEL_CRC: // 0x02 Request CRC32 checksum
-                    cmd_crc(databuffer);
-                    break;
-
-                case SUB_KERNEL_READ_AREA: // 0x03 Read ROM data
-                    cmd_read_area(databuffer);
-                    break;
-
-                case SUB_KERNEL_PROG_VOLT: // 0x04 Read programming voltage
-                    cmd_get_programming_voltage(databuffer);
-                    break;
-
-                case SUB_KERNEL_GET_MAX_MSG_SIZE: // 0x05 Get max message size
-                    cmd_max_msg_size(databuffer);
-                    break;
-
-                case SUB_KERNEL_GET_MAX_BLK_SIZE: // 0x06 Get max flashblock size
-                    cmd_max_blk_size(databuffer);
-                    break;
-
-                case SUB_KERNEL_READ_EEPROM: // 0x07 Read EEPROM data
-                    cmd_read_eeprom(databuffer);
-                    break;
-
-                case SUB_KERNEL_FLASH_ENABLE:
-                    cmd_flash_init(databuffer); // 0x20
-                    break;
-
-                case SUB_KERNEL_FLASH_DISABLE:
-                    cmd_flash_init(databuffer); // 0x21
-                    break;
-
-                case SUB_KERNEL_WRITE_FLASH_BUFFER: // 0x22 Write bytes to flashbuffer
-                    cmd_write_flash_buffer(databuffer);
-                    break;
-
-                case SUB_KERNEL_VALIDATE_FLASH_BUFFER: // 0x23 Validate flashbuffer
-                    cmd_validate_flash_buffer(databuffer);
-                    break;
-
-                case SUB_KERNEL_COMMIT_FLASH_BUFFER: // 0x24 Commit flashbuffer write
-                    cmd_commit_flash_buffer(databuffer);
-                    break;
-
-                case SUB_KERNEL_BLANK_PAGE: // 0x25 Erase flash block
-                    cmd_erase_block(databuffer);
-                    //loadingblocks = true;
-                    break;
-
-                default:
-                    databuffer[0] = 0x7F;
-                    databuffer[1] = databuffer[4];
-                    databuffer[2] = 0x34;   // Unrecognised argument
-                    send_message(databuffer, 3);
-                    break;
-            }
-        }
-        else
-        {
-            if ((databuffer[4] == 0xFF) && (databuffer[5] == 0xC8))
-            {
-                databuffer[0] = 0xFF;
-                databuffer[1] = 0xC8;
-                send_message(databuffer, 2);
-                die();
-            }
-            txbuf[0] = 0x7F;
-            txbuf[1] = 0x35;    // Unrecognised command
-            memcpy(&txbuf[2], databuffer, 16);
-            send_message(txbuf, 18);
-        }
-        memset(databuffer, 0, datablocksize);
-        memset(txbuf, 0, 256);
-    }
-
-	die();
-}
 #endif
 
 /***********************************************
@@ -1158,9 +1000,7 @@ static void can_idle(unsigned us) {
 static int can_rx8bytes(u8 *msg)
 {
     #if defined SH7058
-        #if defined KLINE // For SH7058 K-Line models (pre MY07)
-            // Will be added later
-        #elif defined CAN
+        #if defined CAN
             if(!NPK_CAN.RXPR0.BIT.MB0) return 0;
 
             if(!NPK_CAN.UMSR0.BIT.MB0)
@@ -1268,7 +1108,6 @@ static int can_rx8bytes(u8 *msg)
 static void can_tx8bytes(const u8 *buf)
 {
     #ifdef SH7058
-        // For SH7058 K-Line models (pre MY07)
         #if defined CAN
             while (NPK_CAN.TXPR0.BIT.MB1) { };
 
@@ -1521,25 +1360,26 @@ void set_mailbox(void)
     #endif
 }
 #endif
-
-void can_cmd_loop(void)
+#endif
+void cmd_loop(void)
 {
-    u16 startcode;
-	u8 cmd;
-    //static u8 candatabuffer[datablocklength];
-    //bool loadingblocks = false;
-    //counter8byteblock = 0;
-
-    #if defined(CAN)
-        set_mailbox();
-    #endif
-
+    u16 startcode = 0;
+    u8 cmd = 0;
+#ifdef KLINE
+    u8 rxbyte = 0;
+#endif
+#ifndef KLINE
+#if defined(CAN)
+    set_mailbox();
+#endif
+#endif
     flashbufferindex = 0;
     memset(databuffer, 0, datablocksize);
     memset(txbuf, 0, 256);
 
     while (1)
     {
+#ifndef KLINE
         int rv = can_get_message(databuffer);
         if(rv == 0) // 0 = no data, 1 = data, -1 no unread message available
             continue;
@@ -1551,83 +1391,116 @@ void can_cmd_loop(void)
             send_message(databuffer, 2);
             continue;
         }
+#endif
+#ifdef KLINE
+        enum iso_prc prv;
 
+        /* in case of errors (ORER | FER | PER), reset state mach. */
+        if (NPK_SCI.SSR.BYTE & 0x38)
+        {
+            memset(databuffer, 0, datablocksize);
+            memset(txbuf, 0, 256);
+            //sci_rxidle(MAX_INTERBYTE);
+            continue;
+        }
+
+        if (!NPK_SCI.SSR.BIT.RDRF)
+            continue;
+
+        rxbyte = NPK_SCI.RDR;
+        NPK_SCI.SSR.BIT.RDRF = 0;
+
+        /* got a byte; parse according to state */
+        prv = kline_get_message(databuffer, rxbyte);
+
+        if (prv == ISO_PRC_NEEDMORE)
+            continue;
+
+        if (prv != ISO_PRC_DONE) {
+            memset(databuffer, 0, datablocksize);
+            memset(txbuf, 0, 256);
+            //sci_rxidle(MAX_INTERBYTE);
+            continue;
+        }
+
+        delay(5000);
+#endif
         startcode = (databuffer[0] << 8) | (databuffer[1] & 0xff);
         if(startcode == SUB_KERNEL_START_COMM)
         {
             cmd = databuffer[4] & 0xFF;
             switch(cmd)
-			{
-                case SUB_KERNEL_ID: // 0x01 Request kernel ID
-                    cmd_request_ecuid(databuffer);
-					break;
+            {
+            case SUB_KERNEL_ID: // 0x01 Request kernel ID
+                cmd_request_ecuid(databuffer);
+                break;
 
-                case SUB_KERNEL_CRC: // 0x02 Request CRC32 checksum
-                    cmd_crc(databuffer);
-					break;
+            case SUB_KERNEL_CRC: // 0x02 Request CRC32 checksum
+                cmd_crc(databuffer);
+                break;
 
-                case SUB_KERNEL_READ_AREA: // 0x03 Read ROM data
-                    cmd_read_area(databuffer);
-					break;
+            case SUB_KERNEL_READ_AREA: // 0x03 Read ROM data
+                cmd_read_area(databuffer);
+                break;
 
-                case SUB_KERNEL_PROG_VOLT: // 0x04 Read programming voltage
-                    cmd_get_programming_voltage(databuffer);
-                    break;
+            case SUB_KERNEL_PROG_VOLT: // 0x04 Read programming voltage
+                cmd_get_programming_voltage(databuffer);
+                break;
 
-                case SUB_KERNEL_GET_MAX_MSG_SIZE: // 0x05 Get max message size
-                    cmd_max_msg_size(databuffer);
-                    break;
+            case SUB_KERNEL_GET_MAX_MSG_SIZE: // 0x05 Get max message size
+                cmd_max_msg_size(databuffer);
+                break;
 
-                case SUB_KERNEL_GET_MAX_BLK_SIZE: // 0x06 Get max flashblock size
-                    cmd_max_blk_size(databuffer);
-                    break;
+            case SUB_KERNEL_GET_MAX_BLK_SIZE: // 0x06 Get max flashblock size
+                cmd_max_blk_size(databuffer);
+                break;
 
-                case SUB_KERNEL_READ_EEPROM: // 0x07 Read EEPROM data
-                    cmd_read_eeprom(databuffer);
-                    break;
+            case SUB_KERNEL_READ_EEPROM: // 0x07 Read EEPROM data
+                cmd_read_eeprom(databuffer);
+                break;
 
-                case SUB_KERNEL_FLASH_ENABLE:
-                    cmd_flash_init(databuffer); // 0x20
-                    break;
+            case SUB_KERNEL_FLASH_ENABLE:
+                cmd_flash_init(databuffer); // 0x20
+                break;
 
-                case SUB_KERNEL_FLASH_DISABLE:
-                    cmd_flash_init(databuffer); // 0x21
-                    break;
+            case SUB_KERNEL_FLASH_DISABLE:
+                cmd_flash_init(databuffer); // 0x21
+                break;
 
-                case SUB_KERNEL_WRITE_FLASH_BUFFER: // 0x22 Write bytes to flashbuffer
-                    cmd_write_flash_buffer(databuffer);
-					break;
+            case SUB_KERNEL_WRITE_FLASH_BUFFER: // 0x22 Write bytes to flashbuffer
+                cmd_write_flash_buffer(databuffer);
+                break;
 
-                case SUB_KERNEL_VALIDATE_FLASH_BUFFER: // 0x23 Validate flashbuffer
-                    cmd_validate_flash_buffer(databuffer);
-                    break;
+            case SUB_KERNEL_VALIDATE_FLASH_BUFFER: // 0x23 Validate flashbuffer
+                cmd_validate_flash_buffer(databuffer);
+                break;
 
-                case SUB_KERNEL_COMMIT_FLASH_BUFFER: // 0x24 Commit flashbuffer write
-                    cmd_commit_flash_buffer(databuffer);
-                    break;
+            case SUB_KERNEL_COMMIT_FLASH_BUFFER: // 0x24 Commit flashbuffer write
+                cmd_commit_flash_buffer(databuffer);
+                break;
 
-                case SUB_KERNEL_BLANK_PAGE: //  // 0x25 Erase flash block
-                    cmd_erase_block(databuffer);
-                    //loadingblocks = true;
-                    break;
+            case SUB_KERNEL_BLANK_PAGE: // 0x25 Erase flash block
+                cmd_erase_block(databuffer);
+                //loadingblocks = true;
+                break;
 
-                default:
-                    databuffer[0] = 0x7F;
-                    databuffer[1] = databuffer[4];
-                    databuffer[2] = 0x34;   // Unrecognised argument
-                    send_message(databuffer, 3);
-                    break;
-			}
-		}
-		else
-		{
+            default:
+                databuffer[0] = 0x7F;
+                databuffer[1] = databuffer[4];
+                databuffer[2] = 0x34;   // Unrecognised argument
+                send_message(databuffer, 3);
+                break;
+            }
+        }
+        else
+        {
             if ((databuffer[4] == 0xFF) && (databuffer[5] == 0xC8))
-			{
-                databuffer[0] = 0xFF;
-                databuffer[1] = 0xC8;
-                send_message(databuffer, 2);
+            {
+                txbuf[0] = 0xFF;
+                txbuf[1] = 0xC8;
+                send_message(txbuf, 2);
                 die();
-			}
+            }
             txbuf[0] = 0x7F;
             txbuf[1] = 0x35;    // Unrecognised command
             memcpy(&txbuf[2], databuffer, 16);
@@ -1635,9 +1508,7 @@ void can_cmd_loop(void)
         }
         memset(databuffer, 0, datablocksize);
         memset(txbuf, 0, 256);
-	}
-	die();
-	return;
+    }
+    die();
+    return;
 }
-
-#endif

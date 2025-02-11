@@ -42,5 +42,7 @@ void cmd_loop(void);
  ****************************/
 int can_send_message(u8 *msg, u32 len);
 int can_get_message(u8 *msg);
-void can_cmd_loop(void);
+//void can_cmd_loop(void);
 #endif
+
+void cmd_loop(void);
