@@ -3,6 +3,7 @@
 #This can be changed at compile time as required by
 #the gcc toolchain binaries, i.e. if gcc is installed as
 #"sh4-none-elf-gcc", then run "make PREFIX=sh4-none-elf ..."
+#PREFIX ?= /usr/bin/sh-elf
 PREFIX ?= /usr/share/gnush_v13.01_elf-1/bin/sh-elf
 
 lc = $(subst A,a,$(subst B,b,$(subst C,c,$(subst D,d,$(subst E,e,$(subst F,f,$(subst G,g,$(subst H,h,$(subst I,i,$(subst J,j,$(subst K,k,$(subst L,l,$(subst M,m,$(subst N,n,$(subst O,o,$(subst P,p,$(subst Q,q,$(subst R,r,$(subst S,s,$(subst T,t,$(subst U,u,$(subst V,v,$(subst W,w,$(subst X,x,$(subst Y,y,$(subst Z,z,$1))))))))))))))))))))))))))
@@ -26,6 +27,8 @@ BUILDCOMMS ?= CAN_TP
 
 BUILDMEM ?= FLASH
 #BUILDMEM ?= EEPROM
+
+MCU_REV ?= VER_350
 
 EEPSCOM ?= EEP_COMMS3
 #EEPSCOM ?= EEP_COMMS4
@@ -80,16 +83,18 @@ DEFS = $(BUILDPROTOCOL)
 BUILD_DIR = build
 PROJECT_DIR = build/kernels
 PROJBASE_TMP = $(BUILDPROTOCOL)_$(BUILDCOMMS)_$(BUILDTARGET)
+ifeq ($(MCU_REV), VER_180)
+    PROJBASE_TMP = $(BUILDPROTOCOL)_$(BUILDCOMMS)_$(BUILDTARGET)_180
+endif
 PROJBASE = $(call lc,$(PROJBASE_TMP))
 #PROJBASE = $(PROJBASE_TMP) | tr '[:upper:]' '[:lower:]'
 
 BUILD = $(BUILD_DIR)/$(PROJBASE)
 PROJECT = $(PROJECT_DIR)/$(PROJBASE)
 
-#-specs=nano.specs
-
 CFLAGS = $(CPU) $(DBGFLAGS) $(OPT) -fomit-frame-pointer -std=gnu99 -Wall -Wextra -Wstrict-prototypes \
 	-fstack-usage -fverbose-asm -Wa,-ahlms=$(<:.c=.lst) $(E_CFLAGS)
+CFLAGS += -Wno-maybe-uninitialized -Wno-unused-function
 
 LDFLAGS = $(CPU) -nostartfiles -T$(LDSCRIPT) -Wl,-Map=$(BUILD).map,--cref,--gc-sections
 
@@ -115,7 +120,11 @@ endif
 
 ifeq ($(BUILDPROTOCOL), ssmk)
     ifeq ($(BUILDWHAT), SH7055)
+        ifeq ($(MCU_REV), VER_180)
+	    SRC += platf_7055.c pl_flash_705x_180nm.c
+	else
 	    SRC += platf_7055.c pl_flash_7055_350nm.c
+	endif
 	    LDSCRIPT = ldscripts/lkr_subaru_7055.ld
     else ifeq ($(BUILDWHAT), SH7059D_EURO5)
             SRC += platf_7055.c pl_flash_705x_180nm.c
@@ -136,7 +145,7 @@ all: npk_commit.h $(OBJS) $(BUILD).elf $(PROJECT).bin
 	@$(SIZE) $(BUILD).elf
 
 %.o: %.c
-	@$(CC) -c $(CFLAGS) -D $(BUILDWHAT) -D $(BUILDCOMMS) -D $(EEP_COMMS3_CS) -D $(DEFS) -D $(EEPSCOM) -D PLATF=\"$(BUILDWHAT)\" -I . $< -o $(BUILD_DIR)/$@
+	@$(CC) -c $(CFLAGS) -D $(BUILDWHAT) -D $(BUILDCOMMS) -D $(MCU_REV) -D $(EEP_COMMS3_CS) -D $(DEFS) -D $(EEPSCOM) -D PLATF=\"$(BUILDWHAT)\" -I . $< -o $(BUILD_DIR)/$@
 
 %.o: %.s
 	@$(AS) -c $(ASFLAGS) $< -o $(BUILD_DIR)/$@

@@ -29,6 +29,16 @@
 #include "iso_cmds.h"
 #include "npk_errcodes.h"
 
+enum internal_errcodes {
+    ERR_OK = 0,     // 3 following errors can be ORed
+    ERR_SDSR = 1,	// HUDI.SDSR mismatch
+    ERR_SWE = 2,	//SWE test (180 vs 350nm)
+    ERR_FKEY = 4,	//FKEY test (180 vs 350nm)
+    ERR_FCCS = 8,
+    ERR_RAMER = 16,
+    //5,6,7 : combinations
+};
+
 /*********  Reflashing defines
  *
  * These are for SH7058 and SH7055 (0.18um), and assume a RAM map with
@@ -212,34 +222,38 @@ static bool reflash_enabled = 0;	//global flag to protect flash, see platf_flash
  * Copy + initialize mcu's builtin write + erase functions.
  *
  */
-bool platf_flash_init(u8 *err) {
+bool platf_flash_init(u8 *err)
+{
 	volatile u8 *DPFR;
 	uint32_t FPFR;
 	unsigned imask_save;
 	void *vbr_save;
 
-	reflash_enabled = 0;
+    reflash_enabled = 0;
+    u8 errval = 0;
 
-	//Check 180nm vs 350nm : on 350nm, FKEY is undefined; 180nm has an 8bit RW register
+    //Check 180nm vs 350nm: on 350nm, FKEY is undefined; 180nm has an 8bit RW register
 	FLASH.FKEY = 0x33;
 	if (FLASH.FKEY != 0x33) {
-		*err = PF_SILICON;
-		return 0;
+        errval |= ERR_FKEY;
 	}
 
 	if (FLASH.FCCS.BYTE != 0x80) {
 		//FLER bit set, or FWE pin bad level
-		*err = SID34_BADFCCS;
-		return 0;
-	}
+        errval = ERR_FCCS;
+    }
 
 	if (FLASH.RAMER.WORD) {
 		// RAMER enabled; can't proceed
-		*err = SID34_BADRAMER;
-		return 0;
-	}
+        errval = ERR_RAMER;
+    }
 
-	/*****  copy Erase prog */
+    if (errval) {
+        *err = errval;
+        goto badexit;
+    }
+
+    /*****  copy Erase prog */
 	DPFR = (void *) FL_ERASE_BASE;
 	*DPFR = 0xFF;	//preload ret value to Error state
 
@@ -335,7 +349,7 @@ bool platf_flash_init(u8 *err) {
 		goto badexit;
 	}
 
-	/* suxxess ! */
+    // success!
 	return 1;
 
 badexit:

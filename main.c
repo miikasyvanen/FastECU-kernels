@@ -27,25 +27,19 @@
 
 
 int main(void) {
-	set_imask(0x0F);	// disable interrupts (mask = b'1111)
+    // disable interrupts (mask = b'1111)
+    set_imask(0x0F);
 
 	init_mfg();
 	init_platf();
 
-	/* and lower prio mask to let WDT run */
+    // And lower prio mask to let WDT run
 	set_imask(0x07);
 
-#if defined(KLINE)
-	cmd_init(SCI_DEFAULTDIV);
-    //cmd_loop();
-#elif defined(CAN)
-    //can_cmd_loop();
-#elif defined(CAN_TP)
-    //can_cmd_loop();
-#endif
+    // Jump to main loop and wait for data
     cmd_loop();
 
-	//we should never get here; if so : die
+    // We should never get here. If so, die...
 	die();
 
 	return 0;

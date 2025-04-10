@@ -28,12 +28,7 @@
 
 #define flashbuffersize 0x1000
 #define flashchunksize 0x80
-#ifndef KLINE
 #define flashmessagesize 0x200
-#endif
-#ifdef KLINE
-#define flashmessagesize 0x80
-#endif
 
 u8 flashbuffer[flashbuffersize];
 
@@ -81,7 +76,11 @@ u8 flashbuffer[flashbuffersize];
 
 #elif defined(SH7055)
     #define WDT_MAXCNT 2060 //aim for 3.3ms
-    #include "reg_defines/7055_350nm.h"
+    #if defined (VER_180)
+        #include "reg_defines/7055_7058_180nm.h"
+    #else
+        #include "reg_defines/7055_350nm.h"
+    #endif
     #define RAM_MIN	0xFFFF6000
     #define RAM_MAX	0xFFFFDFFF
     #define NPK_SCI SCI2

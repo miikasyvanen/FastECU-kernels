@@ -33,9 +33,15 @@
 
 /* init SCI to continue comms on K line */
 static void init_sci(void) {
-	NPK_SCI.SCR.BYTE &= 0x2F;	//clear TXIE, RXIE, RE
-	NPK_SCI.SCR.BIT.TE = 1;	//enable TX
-	return;
+    NPK_SCI.SCR.BYTE &= 0x2F;       // Clear TXIE, RXIE, RE
+    NPK_SCI.SCR.BIT.TE = 1;         // Enable TX
+
+    NPK_SCI.SCR.BYTE &= 0xCF;       // Disable TX + RX
+    NPK_SCI.BRR = SCI_DEFAULTDIV;   // Speed = (div + 1) * 625k
+    NPK_SCI.SSR.BYTE &= 0x87;       // Clear RDRF + error flags
+    NPK_SCI.SCR.BYTE |= 0x30;       // Enable TX+RX , no RX interrupts for now
+
+    return;
 }
 
 

@@ -30,17 +30,17 @@
 #define SUB_KERNEL_WRITE_EEPROM             0x08
 
 #define SUB_KERNEL_FLASH_ENABLE             0x20
-#define SUB_KERNEL_FLASH_DISABLE			0x21
-#define SUB_KERNEL_WRITE_FLASH_BUFFER		0x22
-#define SUB_KERNEL_VALIDATE_FLASH_BUFFER	0x23
+#define SUB_KERNEL_FLASH_DISABLE            0x21
+#define SUB_KERNEL_WRITE_FLASH_BUFFER       0x22
+#define SUB_KERNEL_VALIDATE_FLASH_BUFFER    0x23
 #define SUB_KERNEL_COMMIT_FLASH_BUFFER      0x24
 #define SUB_KERNEL_BLANK_PAGE               0x25
 
 #define SUB_KERNEL_INIT                     0x81
-
+/*
 #define SID_CAN_START_COMM  0x7A
 #define SID_CAN_RECUID      0xA0    // Read ECU ID, in this case kernel ID
-#define SID_CAN_DUMP_EEPROM 0xB8	// Format : 0xBD <AS> <BH BL> <AH AL>  ; AS=0 for EEPROM, =1 for ROM
+#define SID_CAN_DUMP_EEPROM 0xB8    // Format : 0xBD <AS> <BH BL> <AH AL>  ; AS=0 for EEPROM, =1 for ROM
 #define SID_CAN_CKS         0xD0    // Request CRC32 of the ROM (starting at <ADDR:SIZE>)
                                     // <SID_CAN_CKS> <ADDR 4bytes> <SIZE 3bytes>
 #define SID_CAN_DUMP        0xD8    // Format : 0xBD <AS> <BH BL> <AH AL>  ; AS=0 for EEPROM, =1 for ROM
@@ -48,9 +48,10 @@
 #define SID_CAN_FLASH_ERASE 0xF0    // Erase flash block
 #define SID_CAN_FLASH_WRITE 0xF8    // Write 128bytes flash
 
-#define SID_RECUID	0x1A	/* read ECU ID, in this case kernel ID */
-#define SID_RECUID_PRC	"\x5A"	/* positive response code, to be concatenated to version string */
-
+#define SID_RECUID	0x1A            // read ECU ID, in this case kernel ID
+#define SID_RECUID_PRC	"\x5A"      // positive response code, to be concatenated to version string
+*/
+#ifdef NISMO
 #define SID_RMBA 0x23	/* ReadMemByAddress. format : <SID_RMBA> <AH> <AM> <AL> <SIZ>  , siz <= 251. */
 				/* response : <SID + 0x40> <D0>....<Dn> <AH> <AM> <AL> */
 
@@ -89,5 +90,6 @@
 #define SID_STARTCOMM 0x81 /* startCommunication */
 
 #define SID_RESET 0x11	/* restart ECU */
+#endif
 
 #endif

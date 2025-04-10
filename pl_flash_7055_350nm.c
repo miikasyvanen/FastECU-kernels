@@ -19,43 +19,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* General notes
- *
- * The 7055 datasheet is written in a slightly confusing style, and some
- * elements are not perfectly clear.
- * Renesas FDT includes sample kernel code that *should* work, but
- * in some respects does not follow the DS, adding to the confusion. The
- * FDT code is also handwritten assembly, with sparse comments (in
- * almost-english) so the intent is not always clear.
- *
- * Other code I've seen (Nissan kernel) has yet another interpretation of
- * the DS, and disagrees with both FDT code and the DS on some points.
- *
- * In here, I've attempted to follow the DS to the letter, referring to
- * FDT code for correctness and Nissan code for sanity.
- *
- **** Questionable points
- *
- * Use of WDT peripheral : DS and FDT code use it, Nissan doesn't.
- * I currently have it in here, but I may remove it since I don't know
- * if Nissan ECUs have the WDTOVF CPU pin wired to anything problematic.
- *
- * Computation of "additional programming data" : DS is unclear, Nissan
- * seems wrong, but FDT agrees with my reading of the DS.
- *
- * Delay loops : the most critical timing values are the "write pulse"
- * delays; for these I disable interrupts around the pulse so our ECU_WDT
- * interrupt doesn't interfere.
- */
-
-
-/* I did attempt to port the Renesas FDT code to GNU as. Little/nothing to be gained
-sh-elf-size with no implems: 3392	1024	536 => 4952
-sh-elf-size with Erase asm implem: 4024	1024	552 => 5600, delta = 648B
-sh-elf-size with Erase C implem: 3924	1024	548	=> 5496, delta = 544B
-sh-elf-size with write + erase C implems: 4292	1024	548 => 5864, delta = 912B
-*/
-
 
 #include "functions.h"
 #include "extra_functions.h"
@@ -67,8 +30,7 @@ sh-elf-size with write + erase C implems: 4292	1024	548 => 5864, delta = 912B
 #include "npk_errcodes.h"
 
 enum internal_errcodes {
-	ERR_OK = 0,
-		// 3 following errors can be ORed
+    ERR_OK = 0,     // 3 following errors can be ORed
 	ERR_SDSR = 1,	// HUDI.SDSR mismatch
 	ERR_SWE = 2,	//SWE test (180 vs 350nm)
 	ERR_FKEY = 4,	//FKEY test (180 vs 350nm)
@@ -117,8 +79,8 @@ enum internal_errcodes {
 
 /** Erase timing constants */
 #define TSESU	WAITN_CALCN(100)
-#define TSE	WAITN_CALCN(10000UL)
-#define TCE	WAITN_CALCN(10)
+#define TSE     WAITN_CALCN(10000UL)
+#define TCE     WAITN_CALCN(10)
 #define TCESU	WAITN_CALCN(10)
 #define TSEV	WAITN_CALCN(6)	/******** Renesas has 20 for this !?? */
 #define TSEVR	WAITN_CALCN(2)
@@ -130,7 +92,7 @@ enum internal_errcodes {
 #define TSP10	WAITN_CALCN(10)
 #define TSP30	WAITN_CALCN(30)
 #define TSP200	WAITN_CALCN(200)
-#define TCP	WAITN_CALCN(5)
+#define TCP     WAITN_CALCN(5)
 #define TCPSU	WAITN_CALCN(5)
 #define TSPV	WAITN_CALCN(4)
 #define TSPVR	WAITN_CALCN(2)
@@ -138,11 +100,11 @@ enum internal_errcodes {
 
 
 /** FLASH constants */
-#define MAX_ET	100		// The number of times of the maximum erase
-#define MAX_WT	1000		// The number of times of the maximum writing
-#define OW_COUNT	6		// The number of times of additional writing
-#define BLK_MAX	16		// EB0..EB15
-#define FLMCR2_BEGIN 0x40000 //40000 - 7FFFF controlled by FLMCR2
+#define MAX_ET          100		// The number of times of the maximum erase
+#define MAX_WT          1000	// The number of times of the maximum writing
+#define OW_COUNT        6		// The number of times of additional writing
+#define BLK_MAX         16		// EB0..EB15
+#define FLMCR2_BEGIN    0x40000 //40000 - 7FFFF controlled by FLMCR2
 
 
 /** FLMCRx bit defines */
@@ -153,8 +115,8 @@ enum internal_errcodes {
 #define FLMCR_PSU	0x10
 #define FLMCR_EV	0x08
 #define FLMCR_PV	0x04
-#define FLMCR_E	0x02
-#define FLMCR_P	0x01
+#define FLMCR_E     0x02
+#define FLMCR_P     0x01
 
 const u32 fblocks[] = {
 	0x00000000,
@@ -301,8 +263,10 @@ uint32_t platf_flash_eb(u32 addr) {
     }
 
 
-	if (blockno >= BLK_MAX) return PFEB_BADBLOCK;
-	if (!reflash_enabled) return 0;
+    if (blockno >= BLK_MAX)
+        return PFEB_BADBLOCK;
+    if (!reflash_enabled)
+        return 0;
 
 	if (fblocks[blockno] >= FLMCR2_BEGIN) {
 		pFLMCR = &FLASH.FLMCR2.BYTE;
@@ -491,7 +455,8 @@ uint32_t platf_flash_wb(uint32_t dest, uint32_t src, uint32_t len)
     if (dest & (flashchunksize-1)) return PFWB_MISALIGNED;	//dest not aligned on flashchunksize bytes boundary
     if (len & (flashchunksize-1)) return PFWB_LEN;	//must be multiple of flashchunksize bytes too
 
-	if (!reflash_enabled) return 0;	//pretend success
+    if (!reflash_enabled)
+        return 0;	//pretend success
 
 	while (len) {
 		rv = 0;
@@ -516,7 +481,8 @@ uint32_t platf_flash_wb(uint32_t dest, uint32_t src, uint32_t len)
 /*********** init, unprotect ***********/
 
 
-bool platf_flash_init(u8 *err) {
+bool platf_flash_init(u8 *err)
+{
 	reflash_enabled = 0;
 	u8 errval = 0;
 
@@ -542,10 +508,8 @@ bool platf_flash_init(u8 *err) {
 	if (*FLASH_180_FKEY == 0x33) {
 		*err = PF_SILICON;
 		errval |= ERR_FKEY;
-		//return 0;
 	}
 	if (errval) {
-		//set_lasterr(errval);
 		*err = errval;
 		return 0;
 	}

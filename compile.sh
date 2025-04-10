@@ -23,6 +23,22 @@ make BUILDWHAT=SH7055 BUILDCOMMS=CAN BUILDMEM=FLASH
 echo "\033[32mCompile SH7055 Denso CAN kernel finished!\033[0m"
 
 echo
+echo "\033[32mCompiling SH7055 180nm K-Line kernel... please wait!\033[0m"
+echo "\033[32mCleaning up first...\033[0m"
+make clean BUILDWHAT=SH7055 BUILDCOMMS=KLINE BUILDMEM=FLASH MCU_REV=VER_180
+echo "\033[32mCompiling...\033[0m"
+make BUILDWHAT=SH7055 BUILDCOMMS=KLINE BUILDMEM=FLASH MCU_REV=VER_180
+echo "\033[32mCompile SH7055 180nm K-Line kernel finished!\033[0m"
+
+echo
+echo "\033[32mCompiling SH7055 180nm Denso CAN kernel... please wait!\033[0m"
+echo "\033[32mCleaning up first...\033[0m"
+make clean BUILDWHAT=SH7055 BUILDCOMMS=CAN BUILDMEM=FLASH MCU_REV=VER_180
+echo "\033[32mCompiling...\033[0m"
+make BUILDWHAT=SH7055 BUILDCOMMS=CAN BUILDMEM=FLASH MCU_REV=VER_180
+echo "\033[32mCompile SH7055 180nm Denso CAN kernel finished!\033[0m"
+
+echo
 echo "\033[32mCompiling SH7058 K-Line kernel... please wait!\033[0m"
 echo "\033[32mCleaning up first...\033[0m"
 make clean BUILDWHAT=SH7058 BUILDCOMMS=KLINE BUILDMEM=FLASH

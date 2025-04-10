@@ -24,7 +24,7 @@
 #include "npk_ver.h"
 #include "platf.h"
 
-#include "eep_funcs.h"
+//#include "eep_funcs.h"
 #include "iso_cmds.h"
 #include "npk_errcodes.h"
 #include "crc.h"
@@ -307,7 +307,7 @@ static void __attribute__ ((noinline)) eep_read16_sub(uint8_t addr, uint16_t *de
     }
 
     txbuf[0] = 0x7f;
-    txbuf[1] = SID_DUMP;
+    txbuf[1] = SUB_KERNEL_READ_EEPROM;
     txbuf[2] = ISO_NRC_GR;
     send_message(txbuf, 3);
     return;
@@ -824,8 +824,7 @@ static void cmd_request_ecuid(u8 *msg)
 static u16 bufferindex = 0;
 static u16 msgindex = 0;
 static u16 msglength = 0;
-//static u32 flashaddr = 0;
-//static u32 flashbufferindex = 0;
+static u32 cmd_loop_counter = 0;
 
 /** simple 8-bit sum */
 static uint8_t cks_u8(const uint8_t * data, unsigned int len)
@@ -913,7 +912,7 @@ enum iso_prc kline_get_message(u8 *msg, u8 newbyte)
     else if (bufferindex == 3)
     {
         msg[3] = newbyte;
-        msglength = ((msg[2] << 8) & 0xff) + (msg[3] & 0xff);
+        msglength = (msg[2] << 8) | msg[3];
         msgindex = 0;
     }
     else if (bufferindex == 4)
@@ -947,6 +946,7 @@ enum iso_prc kline_get_message(u8 *msg, u8 newbyte)
  * beware the FER error flag, it disables further RX. So when changing BRR, if the host sends a byte
  * FER will be set, etc.
  */
+/*
 void cmd_init(u8 brrdiv)
 {
     NPK_SCI.SCR.BYTE &= 0xCF;	// disable TX + RX
@@ -955,7 +955,7 @@ void cmd_init(u8 brrdiv)
     NPK_SCI.SCR.BYTE |= 0x30;	// enable TX+RX , no RX interrupts for now
     return;
 }
-
+*/
 /* command parser; infinite loop waiting for commands.
  * not sure if it's worth the trouble to make this async,
  * what other tasks could run in background ? reflash shit ?
@@ -1324,26 +1324,26 @@ int can_get_message(u8 *msg)
 #ifdef CAN
 void set_mailbox(void)
 {
-	#ifdef SH7055
-		// TX MB1, RX MB0
+    #ifdef SH7055
+        // TX MB1, RX MB0
         u16 can_id = (((NPK_CAN.MC[0][5] << 8) & 0xff00) | (NPK_CAN.MC[0][4] & 0xff));
-		can_id &= ~(0x7ff << 5);
+        can_id &= ~(0x7ff << 5);
         can_id &= 0xfff0;
         can_id |= (0x7e0 << 5);
-		NPK_CAN.MC[0][7] = 0x00;
-		NPK_CAN.MC[0][6] = 0x00;
-		NPK_CAN.MC[0][5] = ((can_id >> 8) & 0xff);
-		NPK_CAN.MC[0][4] = (can_id & 0xff);
+        NPK_CAN.MC[0][7] = 0x00;
+        NPK_CAN.MC[0][6] = 0x00;
+        NPK_CAN.MC[0][5] = ((can_id >> 8) & 0xff);
+        NPK_CAN.MC[0][4] = (can_id & 0xff);
 
-	    can_id = (((NPK_CAN.MC[1][5] << 8) & 0xff00) | (NPK_CAN.MC[1][4] & 0xff));
-		can_id &= ~(0x7ff << 5);
+        can_id = (((NPK_CAN.MC[1][5] << 8) & 0xff00) | (NPK_CAN.MC[1][4] & 0xff));
+        can_id &= ~(0x7ff << 5);
         can_id &= 0xfff0;
         can_id |= (0x7e8 << 5);
-		NPK_CAN.MC[1][7] = 0x00;
-		NPK_CAN.MC[1][6] = 0x00;
-		NPK_CAN.MC[1][5] = ((can_id >> 8) & 0xff);
-		NPK_CAN.MC[1][4] = (can_id & 0xff);
-	#else
+        NPK_CAN.MC[1][7] = 0x00;
+        NPK_CAN.MC[1][6] = 0x00;
+        NPK_CAN.MC[1][5] = ((can_id >> 8) & 0xff);
+        NPK_CAN.MC[1][4] = (can_id & 0xff);
+    #else
         u16 can_id = NPK_CAN.MB[0].CTRLH.WORD;
         can_id &= ~(0x7ff << 4);
         can_id &= 0xfff8;
@@ -1396,16 +1396,21 @@ void cmd_loop(void)
         enum iso_prc prv;
 
         /* in case of errors (ORER | FER | PER), reset state mach. */
-        if (NPK_SCI.SSR.BYTE & 0x38)
+        if (NPK_SCI.SSR.BYTE & 0x38 || cmd_loop_counter > 0xa00000)
         {
+            cmd_loop_counter = 0;
             memset(databuffer, 0, datablocksize);
             memset(txbuf, 0, 256);
             //sci_rxidle(MAX_INTERBYTE);
             continue;
         }
 
+        cmd_loop_counter++;
+
         if (!NPK_SCI.SSR.BIT.RDRF)
             continue;
+
+        cmd_loop_counter = 0;
 
         rxbyte = NPK_SCI.RDR;
         NPK_SCI.SSR.BIT.RDRF = 0;
@@ -1423,7 +1428,7 @@ void cmd_loop(void)
             continue;
         }
 
-        delay(5000);
+        delay(500);
 #endif
         startcode = (databuffer[0] << 8) | (databuffer[1] & 0xff);
         if(startcode == SUB_KERNEL_START_COMM)
