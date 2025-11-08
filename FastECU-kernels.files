@@ -42,6 +42,16 @@ kernels/ssmk_kline_sh7058.bin
 main.c
 main.lst
 main.su
+mc68hc16y5/command.s
+mc68hc16y5/crc.s
+mc68hc16y5/flash.s
+mc68hc16y5/kernel.bin
+mc68hc16y5/kernel.lkf
+mc68hc16y5/kernel.s
+mc68hc16y5/mcci.s
+mc68hc16y5/scim.s
+mc68hc16y5/serial.s
+mc68hc16y5/unkregs.s
 mfg.h
 mfg_nissan.c
 mfg_ssm.c
