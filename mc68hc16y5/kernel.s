@@ -24,6 +24,7 @@
 	xdef	do_read_programming_voltage
 	xdef	do_write_flash_byte
 	xdef	do_blank_16k_page
+	xdef	do_blank_tpu_block
 	xref	do_read_programming_voltage
 
 	xref	toggle_watchdog
@@ -82,7 +83,7 @@ max_programming_voltage:	equ 630 ; (12.6V * 50/V)
 					; the checksumming "trick" wont fail.
 
 kernel_version:
-	dc.b	"FastECU Subaru HC16 Kernel v0.01",0,0 
+	dc.b	"FastECU Subaru HC16 Kernel v0.02",0,0 
 
 main:
 	ldab	#2
@@ -454,6 +455,20 @@ voltage_not_low:
 	bra		cmd_commit_flash_buffer_error	
 
 voltage_ok:
+	; TPU flash (bank 6): the whole write must stay inside its 4KB array
+	ldab	serial_buffer+2, z
+	cmpb	#6
+	bne		commit_range_ok
+	ldd		serial_buffer+3, z
+	addd	serial_buffer+5, z	; start + length
+	bcs		commit_bad_range
+	cpd		#0x1001
+	blo		commit_range_ok
+commit_bad_range:
+	ldaa	#kernel_rsp_error_bad_data_value
+	bra		cmd_commit_flash_buffer_error
+
+commit_range_ok:
 	; write actual flash bytes
 	clr		peak_write_pulses, z
 	ldab	serial_buffer+2, z	; get dest address in X
@@ -524,13 +539,25 @@ cmd_blank_voltage_ok:
 	ldab	serial_buffer+2, z	; get page address in X
 	tbxk
 	ldx		serial_buffer+3, z
+	cmpb	#6					; bank 6 is the TPU flash: erase one 1KB block of it
+	bne		cmd_blank_hd_page
+	cpx		#0x1000				; the array is 4KB
+	bhs		cmd_blank_tpu_range
+	jsr		do_blank_tpu_block
+	bra		cmd_blank_called
+cmd_blank_hd_page:
 	jsr		do_blank_16k_page
+cmd_blank_called:
 	tsta	
 	bne		cmd_blank_16k_page_ok
 	; *** erase failure ***
 	ldaa	#kernel_rsp_error_programming_failure
 	lde		#1
 	lbra	serial_write_response
+
+cmd_blank_tpu_range:
+	ldaa	#kernel_rsp_error_bad_data_value
+	bra		cmd_commit_flash_buffer_error
 
 cmd_blank_16k_page_ok:
 	clr		serial_buffer+1, z	; return erase pulses
