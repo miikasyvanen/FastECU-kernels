@@ -94,6 +94,9 @@ SECTIONS
 	} >TGT
 
 ASSERT(_sdata == _edata, "unhandled initialized data !")
+/* code and constants must stay below 0xFFFF8000: the 0.18um flash driver downloads its erase + write microcode to 0xFFFF8000-8FFF
+ * and the ECU keeps metadata there; the buffers (.bss) live in BUFFER at 0xFFFF9000 */
+ASSERT(. <= 0xFFFF8000, "kernel code + rodata runs into the 0xFFFF8000 flash microcode area")
 
 	/* Uninitialized data section */
 	. = ALIGN(4);

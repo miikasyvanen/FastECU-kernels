@@ -20,6 +20,17 @@
  */
 
 
+/* Both SH7055 flash drivers are linked into one kernel when FLASH_AUTO is set (the default SH7055 build): each gets private
+ * names for the platf_flash_* API and its block table, and pl_flash_7055_auto.c picks one at run time. */
+#ifdef FLASH_AUTO
+#define platf_flash_init	flash350_init
+#define platf_flash_protect	flash350_protect
+#define platf_flash_unprotect	flash350_unprotect
+#define platf_flash_eb		flash350_eb
+#define platf_flash_wb		flash350_wb
+#define fblocks			fblocks_flash350
+#endif
+
 #include "functions.h"
 #include "extra_functions.h"
 

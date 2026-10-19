@@ -20,6 +20,19 @@
  */
 
 
+/* Both SH7055 flash drivers are linked into one kernel when FLASH_AUTO is set (the default SH7055 build): each gets private
+ * names for the platf_flash_* API and its block table, and pl_flash_7055_auto.c picks one at run time. */
+#ifdef FLASH_AUTO
+#define platf_flash_init	flash180_init
+#define platf_flash_protect	flash180_protect
+#define platf_flash_unprotect	flash180_unprotect
+#define platf_flash_eb		flash180_eb
+#define platf_flash_wb		flash180_wb
+#define fblocks			fblocks_flash180
+/* this driver needs the 0.18um register definitions (FKEY, FCCS, FPCS...) whatever the rest of the kernel uses */
+#define VER_180
+#endif
+
 #include "functions.h"
 #include "extra_functions.h"
 

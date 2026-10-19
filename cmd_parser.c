@@ -71,6 +71,22 @@
  * private buffers. */
 static u8 txbuf[256];
 
+void __attribute__ ((noinline)) delay(int mult) {
+	asm("mov #0x0,r5");
+	asm("shll2 %0"::"r"(mult):"r5");
+	asm("shll r4");
+	asm("cmp/hs r4,r5");
+	asm("bt 1f");
+	asm("0:");
+	asm("add #0x1,r5");
+	asm("cmp/hs r4,r5");
+	asm("bf 0b");
+	asm("1:");
+}
+
+/* The EEPROM code (about 1.4KB with the shift helper it drags in) is only built for the kernels that talk to the
+ * serial EEPROM: BUILDMEM=EEPROM, i.e. -DEEPROM_SUPPORT. The flash kernels leave it out. */
+#ifdef EEPROM_SUPPORT
 typedef enum {
 	EEPSCI3_PJ2 = 2,
 	EEPSCI3_PJ3 = 3,
@@ -90,19 +106,6 @@ int EEPROM_CS = 0;
 #define SCI3_CS_PJ2			0x0004 // PJ2
 #define SCI3_CS_PJ3			0x0008 // PJ3
 #define SCI4_CS				0x0400 // PF10
-
-void __attribute__ ((noinline)) delay(int mult) {
-	asm("mov #0x0,r5");
-	asm("shll2 %0"::"r"(mult):"r5");
-	asm("shll r4");
-	asm("cmp/hs r4,r5");
-	asm("bt 1f");
-	asm("0:");
-	asm("add #0x1,r5");
-	asm("cmp/hs r4,r5");
-	asm("bf 0b");
-	asm("1:");
-}
 
 void set_sci3_cs(void) {
 	if (EEPROM_SCI == EEPSCI3_PJ2)
@@ -354,6 +357,8 @@ static uint32_t __attribute__ ((noinline)) eep_write16_sub(uint8_t addr, uint8_t
     return 1;
 
 }
+
+#endif /* EEPROM_SUPPORT */
 
 #define datablocksize   0x410
 static u8 databuffer[datablocksize];
@@ -697,6 +702,7 @@ static void cmd_crc(u8 *msg)
 }
 
 
+#ifdef EEPROM_SUPPORT
 /* dump eeprom command processor, 0xD8 command, called from cmd_loop.
  * args[0,1] : 0x7A and SID
  * ex.: "7A D6 00 10 00 00 00 00" dumps 1MB of ROM@ 0x0
@@ -749,6 +755,8 @@ static void cmd_read_eeprom(u8 *msg) {
 
     return;
 }
+
+#endif /* EEPROM_SUPPORT */
 
 /*
  * Read ROM area command processor, 0xD8 command, called from cmd_loop.
@@ -1460,9 +1468,11 @@ void cmd_loop(void)
                 cmd_max_blk_size(databuffer);
                 break;
 
+#ifdef EEPROM_SUPPORT
             case SUB_KERNEL_READ_EEPROM: // 0x07 Read EEPROM data
                 cmd_read_eeprom(databuffer);
                 break;
+#endif
 
             case SUB_KERNEL_FLASH_ENABLE:
                 cmd_flash_init(databuffer); // 0x20
