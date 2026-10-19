@@ -6,3 +6,12 @@
 *.su
 !precompiled/*.bin
 build/
+
+# Qt Creator / clangd per-machine state and caches
+.qtc_clangd/
+.qtcreator/
+*.creator.user
+*.creator.user.*
+
+# packaged copies of kernels/*.bin
+kernels/*.zip
