@@ -38,6 +38,15 @@ EEPSCOM ?= EEP_COMMS3
 #EEP_COMMS3_CS ?= EEP_COMMS3_CS_PJ2
 EEP_COMMS3_CS ?= EEP_COMMS3_CS_PJ3
 
+# BUILDFOR=TCU: the Denso SH7055 TCU kernel (use with BUILDWHAT=SH7055 BUILDCOMMS=CAN_TP). The TCU's UDS bootloader loads the image only at 0xFFFF9000 and at most 8KB of it, so the
+# code is linked there and the .bss / stack elsewhere (ldscripts/lkr_subaru_7055_tcu.ld); the TCU is 0.35um, so only that flash driver; CAN_TP takes the TCU application's own mailbox
+# identifiers (0x7E1 / 0x7E9). Output: ssmk_tcu_can_tp_sh7055.bin
+BUILDFOR ?=
+ifeq ($(BUILDFOR), TCU)
+    override MCU_REV = VER_350
+    KFLAGS += -DTCU
+endif
+
 # For Subaru ECUs (ssmk protocol)
 # BUILDMEM=FLASH: the lean flash kernel. BUILDMEM=EEPROM: the same plus the serial-EEPROM commands (the port, PJ2/PJ3/PF10, is
 # selected by the command at run time), built as <name>_eeprom.
@@ -86,6 +95,9 @@ endif
 ifeq ($(MCU_REV), VER_350)
     PROJBASE_TMP = $(BUILDPROTOCOL)_$(BUILDCOMMS)_$(BUILDTARGET)_350
 endif
+ifeq ($(BUILDFOR), TCU)
+    PROJBASE_TMP = $(BUILDPROTOCOL)_tcu_$(BUILDCOMMS)_$(BUILDTARGET)
+endif
 PROJBASE = $(call lc,$(PROJBASE_TMP))
 #PROJBASE = $(PROJBASE_TMP) | tr '[:upper:]' '[:lower:]'
 
@@ -131,6 +143,9 @@ ifeq ($(BUILDPROTOCOL), ssmk)
 	    KFLAGS += -DFLASH_AUTO
 	endif
 	    LDSCRIPT = ldscripts/lkr_subaru_7055.ld
+        ifeq ($(BUILDFOR), TCU)
+	    LDSCRIPT = ldscripts/lkr_subaru_7055_tcu.ld
+        endif
     else ifeq ($(BUILDWHAT), SH7059D_EURO5)
             SRC += platf_7055.c pl_flash_705x_180nm.c
  	    LDSCRIPT = ldscripts/lkr_subaru_7059d.ld

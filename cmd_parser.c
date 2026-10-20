@@ -60,6 +60,8 @@
         static const u8 kernel_id_string[] = "FastECU Subaru SH7055 K-Line Kernel v1.00";
 	#elif defined(CAN)
         static const u8 kernel_id_string[] = "FastECU Subaru SH7055 CAN Kernel v1.00";
+	#elif defined(CAN_TP)
+        static const u8 kernel_id_string[] = "FastECU Subaru SH7055 iso15765 Kernel v1.00";
 	#endif
 #endif
 
@@ -1088,6 +1090,18 @@ static int can_rx8bytes(u8 *msg)
     #elif defined SH7055
         #if defined KLINE
             // Will be added later
+        #elif defined CAN_TP // Denso TCU: receive mailbox 14, the host's own (TCU application) identifiers
+            if(!NPK_CAN.RXPR.BIT.MB14) return 0;
+
+            if(!NPK_CAN.UMSR.BIT.MB14)
+            {
+                memcpy(msg, (void *) &NPK_CAN.MD[14][0], 8);
+                NPK_CAN.RXPR.WORD = 0x0040;
+                return 1;
+            }
+            NPK_CAN.UMSR.WORD = 0x0040;
+            NPK_CAN.RXPR.WORD = 0x0040;
+            return -1;
         #elif defined CAN
             if(!NPK_CAN.RXPR.BIT.MB0) return 0;
 
@@ -1170,7 +1184,15 @@ static void can_tx8bytes(const u8 *buf)
             return;
         #endif
     #elif defined SH7055
-        #if defined CAN
+        #if defined CAN_TP // Denso TCU: transmit mailbox 15
+            while (NPK_CAN.TXPR.BIT.MB15) { };
+
+            NPK_CAN.TXACK.WORD = 0x0080;
+            memcpy((void *) &NPK_CAN.MD[15][0], buf, 8);
+            NPK_CAN.TXPR.WORD = 0x0080;
+
+            return;
+        #elif defined CAN
             while (NPK_CAN.TXPR.BIT.MB1) { };
 
             NPK_CAN.TXACK.WORD = 0x0200;
