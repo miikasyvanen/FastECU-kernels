@@ -35,3 +35,6 @@ build "SH7055 Denso CAN-TP TCU kernel"     SH7055         CAN_TP FLASH TCU
 build "SH7055 K-Line EEPROM kernel"       SH7055         KLINE  EEPROM
 build "SH7058 K-Line EEPROM kernel"       SH7058         KLINE  EEPROM
 build "SH7058 Denso CAN-TP EEPROM kernel" SH7058         CAN_TP EEPROM
+build "SH7055 Denso CAN EEPROM kernel"    SH7055         CAN    EEPROM
+build "SH7058 Denso CAN EEPROM kernel"    SH7058         CAN    EEPROM
+build "SH7058 Diesel CAN-TP EEPROM kernel" SH7058D_EURO4 CAN_TP EEPROM

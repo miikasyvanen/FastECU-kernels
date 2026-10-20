@@ -21,6 +21,11 @@ One kernel by hand:
 
 Output name: `ssmk_<comms>_<what>[_eeprom|_350|_180].bin`, lower case; TCU builds are `ssmk_tcu_<comms>_<what>.bin` (like the older `ssmk_tcu_can_sh7058.bin`).
 
+## EEPROM builds (`BUILDMEM=EEPROM`)
+
+The flash kernels carry no serial-EEPROM code (about 1.4KB with the shift helper it drags in). `BUILDMEM=EEPROM` adds command 0x07 (read EEPROM) and builds
+`ssmk_<comms>_<what>_eeprom.bin`. `compile.sh` builds six: SH7055 / SH7058 `KLINE`, SH7055 / SH7058 `CAN`, SH7058 `CAN_TP`, SH7058D_EURO4 `CAN_TP`. Not yet tested on hardware.
+
 ## SH7055 flash driver (`MCU_REV`)
 
 The SH7055 exists as 0.35um and 0.18um silicon with different flash controllers.
