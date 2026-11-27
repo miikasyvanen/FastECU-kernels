@@ -15,6 +15,12 @@
 
 
 void init_mfg(void) {
+#if defined(TCU) && defined(KLINE)
+	/* Denso K-Line TCU: none of the ECU EEPROM / FWE pin setup below (the TCU board is wired differently; reading only) */
+	wdt_dr = &PB.DR.WORD;
+	wdt_pin = 0x8000;
+	return;
+#endif
 	PFC.PDIOR.BIT.B8 = 1;  //required for 7055 02_fxt 350nm, has no effect on 7058
 
 //#if defined(EEP_COMMS4)

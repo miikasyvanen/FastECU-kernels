@@ -49,8 +49,10 @@ SH7058 / SH7059 have a single flash driver; `MCU_REV` does nothing there.
   elsewhere in RAM (not uploaded).
 - ISO 15765 on the TCU application's own CAN mailboxes (RX 14 / TX 15), IDs 0x7E1 / 0x7E9.
 - `BUILDCOMMS=KLINE` gives `ssmk_tcu_kline_sh7055.bin` for the K-Line-only Denso SH7055 TCUs (FastECU `sub_tcu_denso_sh7055_kline`): the same
-  0xFFFF9000 layout with the K-Line comms on SCI3 (62500 baud): the Denso 4EAT TCU firmware runs its SSM K-Line on SCI3 (4800 8N1, BRR 129),
-  not SCI2 as the ECUs (second test: upload and jump accepted, no answer from the SCI2 kernel). Watchdog PB15 and the 20 MHz clock are as on the ECU. Their bootloader refused the ECU kernel's 0xFFFF6004 upload with NRC 0x22 (first
+  K-Line build (ldscripts/lkr_subaru_7055_tcu_kline.ld): the Denso SH7055 K-Line TCU bootloader (04 BXT 63FE2TA2, 05 FXT 86FE7WA1 and siblings)
+  accepts a 34 range from 0xFFFF8000 to 0xFFFFDFFF, checks the 0x5AA5 sum on 31 01 01 and then always jumps to 0xFFFF8004 (ROM 0x40), so this
+  image is linked and uploaded at 0xFFFF8004, .bss at 0xFFFFA000, stack 0xFFFFDEFC. Comms on SCI3 (the bootloader's channel); init_mfg skips the
+  ECU EEPROM / FWE pin setup (only the PB15 watchdog pin is kept). Earlier builds linked at 0xFFFF9000 were started at 0xFFFF8004 and reset the TCU. Their bootloader refused the ECU kernel's 0xFFFF6004 upload with NRC 0x22 (first
   test, TCU ID ABE5006100); the 0xFFFF9000 window is assumed from the CAN TCU bootloader and not yet confirmed on a K-Line TCU.
 
 ## Toolchain

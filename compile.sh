@@ -30,7 +30,7 @@ build "SH7059 Diesel CAN-TP kernel"       SH7059D_EURO5  CAN_TP FLASH
 build "SH7059 Diesel CAN kernel"          SH7059D_EURO5  CAN    FLASH
 # Denso SH7055 TCU (0.35um): ISO15765 like the CAN-TP kernels, image at 0xFFFF9000 (the TCU bootloader's fixed 8KB window), .bss elsewhere
 build "SH7055 Denso CAN-TP TCU kernel"     SH7055         CAN_TP FLASH TCU
-# Denso SH7055 K-Line TCU (sub_tcu_denso_sh7055_kline): the same image layout on K-Line (SCI2, as the ECU K-Line kernel); not yet run on a TCU
+# Denso SH7055 K-Line TCU (sub_tcu_denso_sh7055_kline): linked at 0xFFFF8004 (the K-Line bootloader always jumps there), SCI3, no ECU EEPROM pin setup
 build "SH7055 Denso K-Line TCU kernel"     SH7055         KLINE  FLASH TCU
 
 # EEPROM kernels: the flash kernel plus the serial-EEPROM commands, built as ssmk_<comms>_<what>_eeprom.bin

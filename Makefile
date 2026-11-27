@@ -145,6 +145,9 @@ ifeq ($(BUILDPROTOCOL), ssmk)
 	    LDSCRIPT = ldscripts/lkr_subaru_7055.ld
         ifeq ($(BUILDFOR), TCU)
 	    LDSCRIPT = ldscripts/lkr_subaru_7055_tcu.ld
+            ifeq ($(BUILDCOMMS), KLINE)
+	    LDSCRIPT = ldscripts/lkr_subaru_7055_tcu_kline.ld
+            endif
         endif
     else ifeq ($(BUILDWHAT), SH7059D_EURO5)
             SRC += platf_7055.c pl_flash_705x_180nm.c
