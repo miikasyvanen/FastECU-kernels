@@ -48,6 +48,9 @@ SH7058 / SH7059 have a single flash driver; `MCU_REV` does nothing there.
 - Links with `ldscripts/lkr_subaru_7055_tcu.ld`: code at `0xFFFF9000`, at most 8KB (the TCU bootloader's fixed upload window), `.bss` and stack
   elsewhere in RAM (not uploaded).
 - ISO 15765 on the TCU application's own CAN mailboxes (RX 14 / TX 15), IDs 0x7E1 / 0x7E9.
+- `BUILDCOMMS=KLINE` gives `ssmk_tcu_kline_sh7055.bin` for the K-Line-only Denso SH7055 TCUs (FastECU `sub_tcu_denso_sh7055_kline`): the same
+  0xFFFF9000 layout with the ECU K-Line comms (SCI2, 62500 baud). Their bootloader refused the ECU kernel's 0xFFFF6004 upload with NRC 0x22 (first
+  test, TCU ID ABE5006100); the 0xFFFF9000 window is assumed from the CAN TCU bootloader and not yet confirmed on a K-Line TCU.
 
 ## Toolchain
 

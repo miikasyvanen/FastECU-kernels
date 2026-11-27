@@ -38,7 +38,7 @@ EEPSCOM ?= EEP_COMMS3
 #EEP_COMMS3_CS ?= EEP_COMMS3_CS_PJ2
 EEP_COMMS3_CS ?= EEP_COMMS3_CS_PJ3
 
-# BUILDFOR=TCU: the Denso SH7055 TCU kernel (use with BUILDWHAT=SH7055 BUILDCOMMS=CAN_TP). The TCU's UDS bootloader loads the image only at 0xFFFF9000 and at most 8KB of it, so the
+# BUILDFOR=TCU: the Denso SH7055 TCU kernel (use with BUILDWHAT=SH7055 BUILDCOMMS=CAN_TP, or KLINE for the K-Line TCUs: ssmk_tcu_kline_sh7055.bin). The TCU's UDS bootloader loads the image only at 0xFFFF9000 and at most 8KB of it, so the
 # code is linked there and the .bss / stack elsewhere (ldscripts/lkr_subaru_7055_tcu.ld); the TCU is 0.35um, so only that flash driver; CAN_TP takes the TCU application's own mailbox
 # identifiers (0x7E1 / 0x7E9). Output: ssmk_tcu_can_tp_sh7055.bin
 BUILDFOR ?=
