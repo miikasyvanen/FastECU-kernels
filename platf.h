@@ -83,7 +83,13 @@ u8 flashbuffer[flashbuffersize];
     #endif
     #define RAM_MIN	0xFFFF6000
     #define RAM_MAX	0xFFFFDFFF
-    #define NPK_SCI SCI2
+    #if defined(TCU) && defined(KLINE)
+        /* Denso SH7055 TCU: K-Line is SCI3 (the 4EAT TCU firmware sets SCI3 to 4800 8N1, BRR 129 at 20 MHz, for SSM;
+         * SCI2 runs another link). The bootloader that uploads the kernel has set its pins up already. */
+        #define NPK_SCI SCI3
+    #else
+        #define NPK_SCI SCI2
+    #endif
 
 #else
     #error invalid target for ssmk
