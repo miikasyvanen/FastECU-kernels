@@ -56,7 +56,9 @@
         static const u8 kernel_id_string[] = "FastECU Subaru SH7058 iso15765 Kernel v1.00";
 	#endif
 #elif defined(SH7055)
-	#if defined(KLINE)
+	#if defined(SH7054)
+        static const u8 kernel_id_string[] = "FastECU Subaru SH7054 K-Line TCU Kernel v1.00";
+	#elif defined(KLINE)
         static const u8 kernel_id_string[] = "FastECU Subaru SH7055 K-Line Kernel v1.00";
 	#elif defined(CAN)
         static const u8 kernel_id_string[] = "FastECU Subaru SH7055 CAN Kernel v1.00";

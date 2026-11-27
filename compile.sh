@@ -7,9 +7,9 @@ build() {
     echo
     echo "\033[32mCompiling $1... please wait!\033[0m"
     echo "\033[32mCleaning up first...\033[0m"
-    make clean BUILDWHAT=$2 BUILDCOMMS=$3 BUILDMEM=$4 BUILDFOR=$5
+    make clean BUILDWHAT=$2 BUILDCOMMS=$3 BUILDMEM=$4 BUILDFOR=$5 BUILDCHIP=$6
     echo "\033[32mCompiling...\033[0m"
-    make BUILDWHAT=$2 BUILDCOMMS=$3 BUILDMEM=$4 BUILDFOR=$5
+    make BUILDWHAT=$2 BUILDCOMMS=$3 BUILDMEM=$4 BUILDFOR=$5 BUILDCHIP=$6
     echo "\033[32mCompile $1 finished!\033[0m"
 }
 
@@ -32,6 +32,8 @@ build "SH7059 Diesel CAN kernel"          SH7059D_EURO5  CAN    FLASH
 build "SH7055 Denso CAN-TP TCU kernel"     SH7055         CAN_TP FLASH TCU
 # Denso SH7055 K-Line TCU (sub_tcu_denso_sh7055_kline): linked at 0xFFFF8004 (the K-Line bootloader always jumps there), SCI3, no ECU EEPROM pin setup
 build "SH7055 Denso K-Line TCU kernel"     SH7055         KLINE  FLASH TCU
+# Denso SH7054 K-Line TCU (sub_tcu_denso_sh7054_kline, early 2000s 4EAT): SH7055 code paths, linked at 0xFFFF8004, RAM below 0xFFFFC000, read only
+build "SH7054 Denso K-Line TCU kernel"     SH7055         KLINE  FLASH TCU SH7054
 
 # EEPROM kernels: the flash kernel plus the serial-EEPROM commands, built as ssmk_<comms>_<what>_eeprom.bin
 build "SH7055 K-Line EEPROM kernel"       SH7055         KLINE  EEPROM

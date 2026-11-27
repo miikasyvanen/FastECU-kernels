@@ -46,6 +46,15 @@ ifeq ($(BUILDFOR), TCU)
     override MCU_REV = VER_350
     KFLAGS += -DTCU
 endif
+# BUILDCHIP=SH7054 (with BUILDWHAT=SH7055 BUILDCOMMS=KLINE BUILDFOR=TCU): the early-2000s Denso 4EAT TCU on the SH7054F (384 kB flash,
+# 16 kB RAM 0xFFFF8000-0xFFFFBFFF). Same peripherals at the same addresses as the SH7055 (0.35um), so the SH7055 code paths are used;
+# its own RAM layout (ldscripts/lkr_subaru_7054_tcu_kline.ld). Loaded by the boot block's 'M' / 'S' listener (LEC pulse entry, as the
+# FastECU sub_ecu_denso_sh7055_02 ECUs). READ ONLY: the SH7054F flash is controlled by FLMCR1 alone, pl_flash_7055_350nm is not for it.
+# Output: ssmk_tcu_kline_sh7054.bin
+BUILDCHIP ?=
+ifeq ($(BUILDCHIP), SH7054)
+    KFLAGS += -DSH7054
+endif
 
 # For Subaru ECUs (ssmk protocol)
 # BUILDMEM=FLASH: the lean flash kernel. BUILDMEM=EEPROM: the same plus the serial-EEPROM commands (the port, PJ2/PJ3/PF10, is
@@ -97,6 +106,9 @@ ifeq ($(MCU_REV), VER_350)
 endif
 ifeq ($(BUILDFOR), TCU)
     PROJBASE_TMP = $(BUILDPROTOCOL)_tcu_$(BUILDCOMMS)_$(BUILDTARGET)
+    ifeq ($(BUILDCHIP), SH7054)
+        PROJBASE_TMP = $(BUILDPROTOCOL)_tcu_$(BUILDCOMMS)_SH7054
+    endif
 endif
 PROJBASE = $(call lc,$(PROJBASE_TMP))
 #PROJBASE = $(PROJBASE_TMP) | tr '[:upper:]' '[:lower:]'
@@ -147,6 +159,9 @@ ifeq ($(BUILDPROTOCOL), ssmk)
 	    LDSCRIPT = ldscripts/lkr_subaru_7055_tcu.ld
             ifeq ($(BUILDCOMMS), KLINE)
 	    LDSCRIPT = ldscripts/lkr_subaru_7055_tcu_kline.ld
+                ifeq ($(BUILDCHIP), SH7054)
+	    LDSCRIPT = ldscripts/lkr_subaru_7054_tcu_kline.ld
+                endif
             endif
         endif
     else ifeq ($(BUILDWHAT), SH7059D_EURO5)

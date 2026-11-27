@@ -81,8 +81,14 @@ u8 flashbuffer[flashbuffersize];
     #else
         #include "reg_defines/7055_350nm.h"
     #endif
-    #define RAM_MIN	0xFFFF6000
-    #define RAM_MAX	0xFFFFDFFF
+    #if defined(SH7054)
+        /* SH7054F (Denso K-Line TCU, BUILDCHIP=SH7054): 16 kB RAM */
+        #define RAM_MIN	0xFFFF8000
+        #define RAM_MAX	0xFFFFBFFF
+    #else
+        #define RAM_MIN	0xFFFF6000
+        #define RAM_MAX	0xFFFFDFFF
+    #endif
     #if defined(TCU) && defined(KLINE)
         /* Denso SH7055 K-Line TCU: the K-Line bootloader (boot block of 04 BXT 63FE2TA2, 05 FXT 86FE7WA1 and siblings) runs
          * on SCI3 (SMR / BRR / SCR / TDR / RDR at 0x10E0..0x1986) and leaves its pins set up. */

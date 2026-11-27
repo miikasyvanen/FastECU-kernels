@@ -53,6 +53,11 @@ SH7058 / SH7059 have a single flash driver; `MCU_REV` does nothing there.
   accepts a 34 range from 0xFFFF8000 to 0xFFFFDFFF, checks the 0x5AA5 sum on 31 01 01 and then always jumps to 0xFFFF8004 (ROM 0x40), so this
   image is linked and uploaded at 0xFFFF8004, .bss at 0xFFFFA000, stack 0xFFFFDEFC. Comms on SCI3 (the bootloader's channel); init_mfg skips the
   ECU EEPROM / FWE pin setup (only the PB15 watchdog pin is kept). Earlier builds linked at 0xFFFF9000 were started at 0xFFFF8004 and reset the TCU. Their bootloader refused the ECU kernel's 0xFFFF6004 upload with NRC 0x22 (first
+- SH7054 K-Line TCU (BUILDCHIP=SH7054 with BUILDWHAT=SH7055 BUILDCOMMS=KLINE BUILDFOR=TCU, ssmk_tcu_kline_sh7054.bin): the early-2000s Denso 4EAT
+  TCU on the SH7054F (384 kB flash, 16 kB RAM 0xFFFF8000-0xFFFFBFFF; same peripheral addresses as the SH7055). Its boot block is the
+  sub_ecu_denso_sh7055_02 loader (Line End Check pulse, 'M' / 'S' frames, magic 0x30B1) and jumps to 0xFFFF8004: code there, .bss 0xFFFF9400,
+  stack 0xFFFFBEFC (ldscripts/lkr_subaru_7054_tcu_kline.ld). Read only: the SH7054F flash is controlled by FLMCR1 alone, pl_flash_7055_350nm
+  is not for it.
   test, TCU ID ABE5006100); the 0xFFFF9000 window is assumed from the CAN TCU bootloader and not yet confirmed on a K-Line TCU.
 
 ## Toolchain
