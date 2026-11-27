@@ -1,0 +1,4 @@
++seg .text -b 0x20000 -n .text	# program start address
++seg .bss -a .text -n .bss # data follows code
++seg .data -a .bss -n .data # flash buffer follows data
+kernel.o serial.o flash.o crc.o

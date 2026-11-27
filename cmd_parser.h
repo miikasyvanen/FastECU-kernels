@@ -19,13 +19,30 @@
 
 #include "stypes.h"
 
+void send_message(u8 *buf, u32 msglen);
 
-void cmd_init(u8 brrdiv);
-//void can_init(unsigned int param_1,short param_2,unsigned short param_3,unsigned short param_4,unsigned int param_5,char param_6,unsigned int mailbox);
+//#define KLINE
+#if defined(KLINE)
+/****************************
+ *
+ * K-Line functions
+ *
+ ****************************/
+void kline_send_message(u8 *msg, u32 len);
+enum iso_prc kline_get_message(u8 *msg, u8 newbyte);
+//void cmd_init(u8 brrdiv);
+//void cmd_loop(void);
+#endif
 
-static void can_tx8bytes(const u8 *buf);
-static void can_idle(unsigned us);
+#ifndef KLINE
+/****************************
+ *
+ * CAN / ISO15765 functions
+ *
+ ****************************/
+int can_send_message(u8 *msg, u32 len);
+int can_get_message(u8 *msg);
+//void can_cmd_loop(void);
+#endif
 
 void cmd_loop(void);
-
-void can_cmd_loop(void);

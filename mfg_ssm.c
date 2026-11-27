@@ -43,13 +43,13 @@ void init_mfg(void) {
 	PFC.PLIOR.WORD |= 0x0100;   //set PL8 to be an output
 
 	// required to set up CS signal to EEPROM
-	//#if defined(EEP_COMMS3_CS_PJ2)
-		PFC.PJCRL.WORD &= ~0x0010;  //PJ2 is general I/O
-		PFC.PJIOR.WORD |= 0x0004;   //PJ2 is an output   |  sets PJ3 to be EEPROM CS
-	//#elif defined(EEP_COMMS3_CS_PJ3)
-		PFC.PJCRL.WORD &= ~0x0040;  //PJ3 is general I/O
-		PFC.PJIOR.WORD |= 0x0008;   //PJ3 is an output   |  sets PJ3 to be EEPROM CS
-	//#endif
+//#if defined(EEP_COMMS3_CS_PJ2)
+    PFC.PJCRL.WORD &= ~0x0010;  //PJ2 is general I/O
+    PFC.PJIOR.WORD |= 0x0004;   //PJ2 is an output   |  sets PJ2 to be EEPROM CS
+//#elif defined(EEP_COMMS3_CS_PJ3)
+    PFC.PJCRL.WORD &= ~0x0040;  //PJ3 is general I/O
+    PFC.PJIOR.WORD |= 0x0008;   //PJ3 is an output   |  sets PJ3 to be EEPROM CS
+//#endif
 
 	// required to set up Rx on SCI3 for comms with EEPROM
 	PFC.PBCRH.WORD &= ~0x0008;  //turn off PB9 MD1   |

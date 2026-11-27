@@ -2,54 +2,41 @@
 
 mkdir -p build/kernels
 
+# build <title> <what> <comms> <mem> [<for>]
+build() {
+    echo
+    echo "\033[32mCompiling $1... please wait!\033[0m"
+    echo "\033[32mCleaning up first...\033[0m"
+    make clean BUILDWHAT=$2 BUILDCOMMS=$3 BUILDMEM=$4 BUILDFOR=$5
+    echo "\033[32mCompiling...\033[0m"
+    make BUILDWHAT=$2 BUILDCOMMS=$3 BUILDMEM=$4 BUILDFOR=$5
+    echo "\033[32mCompile $1 finished!\033[0m"
+}
+
 echo
 echo "\033[1;36m***********************************\033[0m"
 echo "\033[1;36m* Compiling kernel binaries\033[0m"
 echo "\033[1;36m***********************************\033[0m"
-echo
-echo "\033[32mCompiling SH7055 K-Line kernel... please wait!\033[0m"
-echo "\033[32mCleaning up first...\033[0m"
-make clean BUILDWHAT=SH7055 BUILDCOMMS=KLINE BUILDMEM=FLASH
-echo "\033[32mCompiling...\033[0m"
-make BUILDWHAT=SH7055 BUILDCOMMS=KLINE BUILDMEM=FLASH
-echo "\033[32mCompile SH7055 K-Line kernel finished!\033[0m"
 
-echo
-echo "\033[32mCompiling SH7055 Denso CAN kernel... please wait!\033[0m"
-echo "\033[32mCleaning up first...\033[0m"
-make clean BUILDWHAT=SH7055 BUILDCOMMS=CAN BUILDMEM=FLASH
-echo "\033[32mCompiling...\033[0m"
-make BUILDWHAT=SH7055 BUILDCOMMS=CAN BUILDMEM=FLASH
-echo "\033[32mCompile SH7055 Denso CAN kernel finished!\033[0m"
+# Flash kernels (lean, no EEPROM code). SH7055 kernels carry both the 0.35um and the 0.18um flash driver and pick
+# the right one at run time (pl_flash_7055_auto.c), so there are no separate 180nm builds.
+build "SH7055 K-Line kernel"              SH7055         KLINE  FLASH
+build "SH7055 Denso CAN kernel"           SH7055         CAN    FLASH
+build "SH7058 K-Line kernel"              SH7058         KLINE  FLASH
+build "SH7058 Denso CAN kernel"           SH7058         CAN    FLASH
+build "SH7058 Denso CAN-TP kernel"        SH7058         CAN_TP FLASH
+build "SH7058 Diesel CAN-TP kernel"       SH7058D_EURO4  CAN_TP FLASH
+build "SH7059 Diesel CAN-TP kernel"       SH7059D_EURO5  CAN_TP FLASH
+build "SH7059 Diesel CAN kernel"          SH7059D_EURO5  CAN    FLASH
+# Denso SH7055 TCU (0.35um): ISO15765 like the CAN-TP kernels, image at 0xFFFF9000 (the TCU bootloader's fixed 8KB window), .bss elsewhere
+build "SH7055 Denso CAN-TP TCU kernel"     SH7055         CAN_TP FLASH TCU
+# Denso SH7055 K-Line TCU (sub_tcu_denso_sh7055_kline): the same image layout on K-Line (SCI2, as the ECU K-Line kernel); not yet run on a TCU
+build "SH7055 Denso K-Line TCU kernel"     SH7055         KLINE  FLASH TCU
 
-echo
-echo "\033[32mCompiling SH7058 K-Line kernel... please wait!\033[0m"
-echo "\033[32mCleaning up first...\033[0m"
-make clean BUILDWHAT=SH7058 BUILDCOMMS=KLINE BUILDMEM=FLASH
-echo "\033[32mCompiling...\033[0m"
-make BUILDWHAT=SH7058 BUILDCOMMS=KLINE BUILDMEM=FLASH
-echo "\033[32mCompile SH7058 K-Line kernel finished!\033[0m"
-
-echo
-echo "\033[32mCompiling SH7058 Denso CAN kernel... please wait!\033[0m"
-echo "\033[32mCleaning up first...\033[0m"
-make clean BUILDWHAT=SH7058 BUILDCOMMS=CAN BUILDMEM=FLASH
-echo "\033[32mCompiling...\033[0m"
-make BUILDWHAT=SH7058 BUILDCOMMS=CAN BUILDMEM=FLASH
-echo "\033[32mCompile SH7058 Denso CAN kernel finished!\033[0m"
-
-echo
-echo "\033[32mCompiling SH7058 Denso CAN-TP kernel... please wait!\033[0m"
-echo "\033[32mCleaning up first...\033[0m"
-make clean BUILDWHAT=SH7058 BUILDCOMMS=CAN_TP BUILDMEM=FLASH
-echo "\033[32mCompiling...\033[0m"
-make BUILDWHAT=SH7058 BUILDCOMMS=CAN_TP BUILDMEM=FLASH
-echo "\033[32mCompile SH7058 CAN-TP kernel finished!\033[0m"
-
-echo
-echo "\033[32mCompiling SH7058 Diesel Denso CAN-TP kernel... please wait!\033[0m"
-echo "\033[32mCleaning up first...\033[0m"
-make clean BUILDWHAT=SH7058D_EURO4 BUILDCOMMS=CAN_TP BUILDMEM=FLASH
-echo "\033[32mCompiling...\033[0m"
-make BUILDWHAT=SH7058D_EURO4 BUILDCOMMS=CAN_TP BUILDMEM=FLASH
-echo "\033[32mCompile SH7058 CAN-TP kernel finished!\033[0m"
+# EEPROM kernels: the flash kernel plus the serial-EEPROM commands, built as ssmk_<comms>_<what>_eeprom.bin
+build "SH7055 K-Line EEPROM kernel"       SH7055         KLINE  EEPROM
+build "SH7058 K-Line EEPROM kernel"       SH7058         KLINE  EEPROM
+build "SH7058 Denso CAN-TP EEPROM kernel" SH7058         CAN_TP EEPROM
+build "SH7055 Denso CAN EEPROM kernel"    SH7055         CAN    EEPROM
+build "SH7058 Denso CAN EEPROM kernel"    SH7058         CAN    EEPROM
+build "SH7058 Diesel CAN-TP EEPROM kernel" SH7058D_EURO4 CAN_TP EEPROM

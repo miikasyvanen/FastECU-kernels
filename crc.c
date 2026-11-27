@@ -62,7 +62,8 @@ static void init_crc32_tab( void ) {
 
 
 /* 12 cy/byte; codesize = 0x78; tablesiz = 512B */
-u16 crc16(const u8 *data, u32 siz) {
+u16 crc16(const u8 *data, u32 siz)
+{
 	u16 crc;
 
 	if ( ! crc_tab16_init ) init_crc16_tab();
@@ -89,16 +90,32 @@ u16 crc16(const u8 *data, u32 siz) {
     return crc;
 }
 
-u32 crc32(const u8 *data, u32 siz) {
+u32 crc32(const u8 *data, u32 len)
+{
     unsigned int crc = 0xFFFFFFFF;
 
     if (!crc_tab32_init)
         init_crc32_tab();
 
-    if (!siz)
+    if (!len)
         return 0L;
-    while (siz--)
+    while (len--)
         crc = crc_tab32[((int)crc ^ (*data++)) & 0xff] ^ (crc >> 8);
+
+    return crc ^ 0xFFFFFFFF;
+}
+
+u32 buffer_crc32(u8 *flashbuffer, u32 len)
+{
+    unsigned int crc = 0xFFFFFFFF;
+
+    if (!crc_tab32_init)
+        init_crc32_tab();
+
+    if (!len)
+        return 0L;
+    while (len--)
+        crc = crc_tab32[((int)crc ^ (*flashbuffer++)) & 0xff] ^ (crc >> 8);
 
     return crc ^ 0xFFFFFFFF;
 }

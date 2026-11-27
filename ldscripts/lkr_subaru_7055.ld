@@ -45,8 +45,10 @@ ENTRY(RAMjump_entry)
 
 /* Memory areas */
 MEMORY {
-	RAM (xw)	: ORIGIN = 0xFFFF6004, LENGTH = 24K
-
+  RAM (xw)	: ORIGIN = 0xFFFF6004, LENGTH = 24K
+  /* skip the area @ FFFF8000 because there's some metadata copied there */
+  RJFIX (xw)	: ORIGIN = 0xFFFF8000, LENGTH = 4K
+  BUFFER (xw)	: ORIGIN = 0xFFFF9000, LENGTH = 12K
 }
 REGION_ALIAS("TGT", RAM);
 
@@ -92,6 +94,9 @@ SECTIONS
 	} >TGT
 
 ASSERT(_sdata == _edata, "unhandled initialized data !")
+/* code and constants must stay below 0xFFFF8000: the 0.18um flash driver downloads its erase + write microcode to 0xFFFF8000-8FFF
+ * and the ECU keeps metadata there; the buffers (.bss) live in BUFFER at 0xFFFF9000 */
+ASSERT(. <= 0xFFFF8000, "kernel code + rodata runs into the 0xFFFF8000 flash microcode area")
 
 	/* Uninitialized data section */
 	. = ALIGN(4);
@@ -106,7 +111,7 @@ ASSERT(_sdata == _edata, "unhandled initialized data !")
 		_ebss = .;         /* define a global symbol at bss end */
 		_bsslen = . - _sbss;
 		_endpayload = .;
-	} >TGT
+  } >BUFFER
 
 
 	/* Remove information from the standard libraries */

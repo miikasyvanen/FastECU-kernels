@@ -20,6 +20,19 @@
  */
 
 
+/* Both SH7055 flash drivers are linked into one kernel when FLASH_AUTO is set (the default SH7055 build): each gets private
+ * names for the platf_flash_* API and its block table, and pl_flash_7055_auto.c picks one at run time. */
+#ifdef FLASH_AUTO
+#define platf_flash_init	flash180_init
+#define platf_flash_protect	flash180_protect
+#define platf_flash_unprotect	flash180_unprotect
+#define platf_flash_eb		flash180_eb
+#define platf_flash_wb		flash180_wb
+#define fblocks			fblocks_flash180
+/* this driver needs the 0.18um register definitions (FKEY, FCCS, FPCS...) whatever the rest of the kernel uses */
+#define VER_180
+#endif
+
 #include "functions.h"
 #include "extra_functions.h"
 
@@ -28,6 +41,16 @@
 #include "platf.h"
 #include "iso_cmds.h"
 #include "npk_errcodes.h"
+
+enum internal_errcodes {
+    ERR_OK = 0,     // 3 following errors can be ORed
+    ERR_SDSR = 1,	// HUDI.SDSR mismatch
+    ERR_SWE = 2,	//SWE test (180 vs 350nm)
+    ERR_FKEY = 4,	//FKEY test (180 vs 350nm)
+    ERR_FCCS = 8,
+    ERR_RAMER = 16,
+    //5,6,7 : combinations
+};
 
 /*********  Reflashing defines
  *
@@ -45,114 +68,134 @@
  * - on Nissan : kernel @ 0xFFFF8100, this leaves ~16k for both kernel + stack
  */
 
-
 /* Select area in which to download the erase + write microcode.
  * skip 00 and 01 in case someone wants to use RAMER at some point
  */
-
-
 
 #if defined(SH7058)
 // 7058S needs 3kB for each microcode (vs 2k for 7055_18 / 7058).
 // leaving one 2k chunk empty between ERASE and WRITE does no harm
 // on 7058.
-	#define FTDAR_ERASE 0x02
-	#define FTDAR_WRITE 0x04
-	#define FL_ERASE_BASE	0xFFFF1000
-	#define FL_WRITE_BASE	0xFFFF2000
+    #define FTDAR_ERASE 0x02
+    #define FTDAR_WRITE 0x04
+    #define FL_ERASE_BASE	0xFFFF1000
+    #define FL_WRITE_BASE	0xFFFF2000
 
-	#define FL_MAXROM	(1024*1024UL - 1UL)
+    #define FL_MAXROM	(1024*1024UL - 1UL)
 
-	const u32 fblocks[] = {
-		0x00000000,
-		0x00001000,
-		0x00002000,
-		0x00003000,
-		0x00004000,
-		0x00005000,
-		0x00006000,
-		0x00007000,
-		0x00008000,
-		0x00020000,
-		0x00040000,
-		0x00060000,
-		0x00080000,
-		0x000A0000,
-		0x000C0000,
-		0x000E0000,
-		0x00100000,	/* end delimiter */
-	};
+    const u32 fblocks[] = {
+        0x00000000,
+        0x00001000,
+        0x00002000,
+        0x00003000,
+        0x00004000,
+        0x00005000,
+        0x00006000,
+        0x00007000,
+        0x00008000,
+        0x00020000,
+        0x00040000,
+        0x00060000,
+        0x00080000,
+        0x000A0000,
+        0x000C0000,
+        0x000E0000,
+        0x00100000,	/* end delimiter */
+    };
+
+#elif defined(SH7059D_EURO5)
+// 7059 is basicly 7058S with more memory
+// 7058S needs 3kB for each microcode (vs 2k for 7055_18 / 7058).
+// leaving one 2k chunk empty between ERASE and WRITE does no harm
+// on 7058.
+    #define FTDAR_ERASE 0x02
+    #define FTDAR_WRITE 0x04
+    #define FL_ERASE_BASE	0xFFFE9000
+    #define FL_WRITE_BASE	0xFFFEA000
+
+    #define FL_MAXROM	(1536*1024UL - 1UL)
+
+    const u32 fblocks[] = {
+        0x00000000,
+        0x00001000,
+        0x00002000,
+        0x00003000,
+        0x00004000,
+        0x00005000,
+        0x00006000,
+        0x00007000,
+        0x00008000,
+        0x00020000,
+        0x00040000,
+        0x00060000,
+        0x00080000,
+        0x000C0000,
+        0x00100000,
+        0x00140000,
+        0x00180000,	/* end delimiter */
+    };
 
 #elif defined(SH7058D_EURO4)
 // 7058S needs 3kB for each microcode (vs 2k for 7055_18 / 7058).
 // leaving one 2k chunk empty between ERASE and WRITE does no harm
 // on 7058.
-	#define FTDAR_ERASE 0x02
-	#define FTDAR_WRITE 0x04
-	#define FL_ERASE_BASE	0xFFFF1000
-	#define FL_WRITE_BASE	0xFFFF2000
+    #define FTDAR_ERASE 0x02
+    #define FTDAR_WRITE 0x04
+    #define FL_ERASE_BASE	0xFFFF1000
+    #define FL_WRITE_BASE	0xFFFF2000
 
-	#define FL_MAXROM	(1024*1024UL - 1UL)
+    #define FL_MAXROM	(1024*1024UL - 1UL)
 
-	const u32 fblocks[] = {
-		0x00000000,
-		0x00001000,
-		0x00002000,
-		0x00003000,
-		0x00004000,
-		0x00005000,
-		0x00006000,
-		0x00007000,
-		0x00008000,
-		0x00020000,
-		0x00040000,
-		0x00060000,
-		0x00080000,
-		0x000A0000,
-		0x000C0000,
-		0x000E0000,
-		0x00100000,	/* end delimiter */
-	};
+    const u32 fblocks[] = {
+        0x00000000,
+        0x00001000,
+        0x00002000,
+        0x00003000,
+        0x00004000,
+        0x00005000,
+        0x00006000,
+        0x00007000,
+        0x00008000,
+        0x00020000,
+        0x00040000,
+        0x00060000,
+        0x00080000,
+        0x000A0000,
+        0x000C0000,
+        0x000E0000,
+        0x00100000,	/* end delimiter */
+    };
 
 #elif defined(SH7055)
-	#if defined(npk)
-		#define FTDAR_ERASE 0x00
-		#define FTDAR_WRITE 0x01
-		#define FL_ERASE_BASE	0xFFFF6000
-		#define FL_WRITE_BASE	0xFFFF6800
+    #define FTDAR_ERASE 0x04
+    #define FTDAR_WRITE 0x05
+    #define FL_ERASE_BASE	0xFFFF8000
+    #define FL_WRITE_BASE	0xFFFF8800
 
-	#elif defined(ssmk)
-		#define FTDAR_ERASE 0x04
-		#define FTDAR_WRITE 0x05
-		#define FL_ERASE_BASE	0xFFFF8000
-		#define FL_WRITE_BASE	0xFFFF8800
+    #define FL_MAXROM	(512*1024UL - 1UL)
 
-	#endif
-
-	#define FL_MAXROM	(512*1024UL - 1UL)
-
-	const u32 fblocks[] = {
-		0x00000000,
-		0x00001000,
-		0x00002000,
-		0x00003000,
-		0x00004000,
-		0x00005000,
-		0x00006000,
-		0x00007000,
-		0x00008000,
-		0x00010000,
-		0x00020000,
-		0x00030000,
-		0x00040000,
-		0x00050000,
-		0x00060000,
-		0x00070000,
-		0x00080000,	/* end delimiter */
-	};
+    const u32 fblocks[] = {
+        0x00000000,
+        0x00001000,
+        0x00002000,
+        0x00003000,
+        0x00004000,
+        0x00005000,
+        0x00006000,
+        0x00007000,
+        0x00008000,
+        0x00010000,
+        0x00020000,
+        0x00030000,
+        0x00040000,
+        0x00050000,
+        0x00060000,
+        0x00070000,
+        0x00080000,	/* end delimiter */
+    };
 
 #else
-	#error No target specified !
+    #error No target specified !
 
 #endif
 
@@ -192,34 +235,38 @@ static bool reflash_enabled = 0;	//global flag to protect flash, see platf_flash
  * Copy + initialize mcu's builtin write + erase functions.
  *
  */
-bool platf_flash_init(u8 *err) {
+bool platf_flash_init(u8 *err)
+{
 	volatile u8 *DPFR;
 	uint32_t FPFR;
 	unsigned imask_save;
 	void *vbr_save;
 
-	reflash_enabled = 0;
+    reflash_enabled = 0;
+    u8 errval = 0;
 
-	//Check 180nm vs 350nm : on 350nm, FKEY is undefined; 180nm has an 8bit RW register
+    //Check 180nm vs 350nm: on 350nm, FKEY is undefined; 180nm has an 8bit RW register
 	FLASH.FKEY = 0x33;
 	if (FLASH.FKEY != 0x33) {
-		*err = PF_SILICON;
-		return 0;
+        errval |= ERR_FKEY;
 	}
 
 	if (FLASH.FCCS.BYTE != 0x80) {
 		//FLER bit set, or FWE pin bad level
-		*err = SID34_BADFCCS;
-		return 0;
-	}
+        errval = ERR_FCCS;
+    }
 
 	if (FLASH.RAMER.WORD) {
 		// RAMER enabled; can't proceed
-		*err = SID34_BADRAMER;
-		return 0;
-	}
+        errval = ERR_RAMER;
+    }
 
-	/*****  copy Erase prog */
+    if (errval) {
+        *err = errval;
+        goto badexit;
+    }
+
+    /*****  copy Erase prog */
 	DPFR = (void *) FL_ERASE_BASE;
 	*DPFR = 0xFF;	//preload ret value to Error state
 
@@ -315,7 +362,7 @@ bool platf_flash_init(u8 *err) {
 		goto badexit;
 	}
 
-	/* suxxess ! */
+    // success!
 	return 1;
 
 badexit:
@@ -324,17 +371,30 @@ badexit:
 	return 0;
 }
 
+void platf_flash_protect(void) {
+    reflash_enabled = 0;
+}
 
 void platf_flash_unprotect(void) {
-	reflash_enabled = 1;
+    reflash_enabled = 1;
 }
 
 
-uint32_t platf_flash_eb(unsigned blockno) {
+uint32_t platf_flash_eb(u32 addr) {
 	uint32_t FPFR;
+    unsigned blockno = 0;
 
-	if (blockno > FL_ERASEBLOCKS) return PFEB_BADBLOCK;
-	if (!reflash_enabled) return 0;
+    for (int i = 0; i < (FL_ERASEBLOCKS + 1); i++)
+    {
+        if (addr == fblocks[i])
+            blockno = i;
+    }
+
+    if (blockno > FL_ERASEBLOCKS)
+        return PFEB_BADBLOCK;
+
+    if (!reflash_enabled)
+        return 0;	//pretend success
 
 	FLASH.FKEY = 0x5A;
 	FPFR = fl_erase(blockno);
@@ -357,7 +417,7 @@ uint32_t platf_flash_eb(unsigned blockno) {
 /** ret 0 if ok, FPFR value if failed
  * assumes params are ok, and that block was already erased
  */
-static uint32_t flash_write128(uint32_t dest, uint32_t src) {
+static uint32_t flash_write(uint32_t dest, uint32_t src) {
 	uint32_t FPFR;
 
 	FLASH.FKEY = 0x5A;
@@ -369,26 +429,30 @@ static uint32_t flash_write128(uint32_t dest, uint32_t src) {
 
 uint32_t platf_flash_wb(uint32_t dest, uint32_t src, uint32_t len) {
 
-	if (dest > FL_MAXROM) return PFWB_OOB;
-	if (dest & 0x7F) return PFWB_MISALIGNED;	//dest not aligned on 128B boundary
-	if (len & 0x7F) return PFWB_LEN;	//must be multiple of 128B too
+    uint32_t rv = 0;
 
-	if (!reflash_enabled) return 0;	//pretend success
+	if (dest > FL_MAXROM) return PFWB_OOB;
+    if (dest & (flashchunksize-1)) return PFWB_MISALIGNED;	//dest not aligned on flashblocksize bytes boundary
+    if (len & (flashchunksize-1)) return PFWB_LEN;	//must be multiple of flashblocksize bytes too
+
+    if (!reflash_enabled)
+        return 0;	//pretend success
 
 	while (len) {
-		uint32_t rv = 0;
+        rv = 0;
 
-		rv = flash_write128(dest, src);
+		rv = flash_write(dest, src);
 
 		if (rv) {
 			return (rv & 0x06) | PF_FPFR_BASE;	//tweak into valid NRC
 		}
 
-		if (memcmp((void *)dest, (void *)src, 128) != 0) return PFWB_VERIFAIL;
+        if (memcmp((void *)dest, (void *)src, flashchunksize) != 0)
+            return PFWB_VERIFAIL;
 
-		dest += 128;
-		src += 128;
-		len -= 128;
+        dest += flashchunksize;
+        src += flashchunksize;
+        len -= flashchunksize;
 	}
 	return 0;
 }

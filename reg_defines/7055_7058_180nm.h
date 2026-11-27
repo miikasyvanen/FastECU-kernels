@@ -73,6 +73,284 @@ union un_mb15_1 {                                       /* MB15-MB1     */
                        unsigned short MB1 :1;           /*    MB1       */
                        }     BIT;                       /*              */
 };                                                      /*              */
+struct st_hcan {                                        /* struct HCAN  */
+               union {                                  /* MCR          */
+                     unsigned char BYTE;                /*  Byte Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char SLPMR:1;      /*    SLPMR     */
+                            unsigned char      :1;      /*              */
+                            unsigned char SLPM :1;      /*    SLPM      */
+                            unsigned char      :2;      /*              */
+                            unsigned char MTM  :1;      /*    MTM       */
+                            unsigned char HLTRQ:1;      /*    HLTRQ     */
+                            unsigned char RSTRQ:1;      /*    RSTRQ     */
+                            }      BIT;                 /*              */
+                     }          MCR;                    /*              */
+               union {                                  /* GSR          */
+                     unsigned char BYTE;                /*  Byte Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char     :4;       /*              */
+                            unsigned char RSB :1;       /*    RSB       */
+                            unsigned char MTSF:1;       /*    MTSF      */
+                            unsigned char TRWF:1;       /*    TRWF      */
+                            unsigned char BOF :1;       /*    BOF       */
+                            }      BIT;                 /*              */
+                     }          GSR;                    /*              */
+               union {                                  /* BCR          */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char SJW  :2;      /*    SJW       */
+                            unsigned char BRP  :6;      /*    BRP       */
+                            unsigned char BSP  :1;      /*    BSP       */
+                            unsigned char TSEG2:3;      /*    TSEG2     */
+                            unsigned char TSEG1:4;      /*    TSEG1     */
+                            }       BIT;                /*              */
+                     }          BCR;                    /*              */
+               union {                                  /* MBCR         */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char MB7 :1;       /*    MB7       */
+                            unsigned char MB6 :1;       /*    MB6       */
+                            unsigned char MB5 :1;       /*    MB5       */
+                            unsigned char MB4 :1;       /*    MB4       */
+                            unsigned char MB3 :1;       /*    MB3       */
+                            unsigned char MB2 :1;       /*    MB2       */
+                            unsigned char MB1 :1;       /*    MB1       */
+                            unsigned char     :1;       /*              */
+                            unsigned char MB15:1;       /*    MB15      */
+                            unsigned char MB14:1;       /*    MB14      */
+                            unsigned char MB13:1;       /*    MB13      */
+                            unsigned char MB12:1;       /*    MB12      */
+                            unsigned char MB11:1;       /*    MB11      */
+                            unsigned char MB10:1;       /*    MB10      */
+                            unsigned char MB9 :1;       /*    MB9       */
+                            unsigned char MB8 :1;       /*    MB8       */
+                            }       BIT;                /*              */
+                     }          MBCR;                   /*              */
+               union {                                  /* TXPR         */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char MB7 :1;       /*    MB7       */
+                            unsigned char MB6 :1;       /*    MB6       */
+                            unsigned char MB5 :1;       /*    MB5       */
+                            unsigned char MB4 :1;       /*    MB4       */
+                            unsigned char MB3 :1;       /*    MB3       */
+                            unsigned char MB2 :1;       /*    MB2       */
+                            unsigned char MB1 :1;       /*    MB1       */
+                            unsigned char     :1;       /*              */
+                            unsigned char MB15:1;       /*    MB15      */
+                            unsigned char MB14:1;       /*    MB14      */
+                            unsigned char MB13:1;       /*    MB13      */
+                            unsigned char MB12:1;       /*    MB12      */
+                            unsigned char MB11:1;       /*    MB11      */
+                            unsigned char MB10:1;       /*    MB10      */
+                            unsigned char MB9 :1;       /*    MB9       */
+                            unsigned char MB8 :1;       /*    MB8       */
+                            }       BIT;                /*              */
+                     }          TXPR;                   /*              */
+               union {                                  /* TXCR         */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char MB7 :1;       /*    MB7       */
+                            unsigned char MB6 :1;       /*    MB6       */
+                            unsigned char MB5 :1;       /*    MB5       */
+                            unsigned char MB4 :1;       /*    MB4       */
+                            unsigned char MB3 :1;       /*    MB3       */
+                            unsigned char MB2 :1;       /*    MB2       */
+                            unsigned char MB1 :1;       /*    MB1       */
+                            unsigned char     :1;       /*              */
+                            unsigned char MB15:1;       /*    MB15      */
+                            unsigned char MB14:1;       /*    MB14      */
+                            unsigned char MB13:1;       /*    MB13      */
+                            unsigned char MB12:1;       /*    MB12      */
+                            unsigned char MB11:1;       /*    MB11      */
+                            unsigned char MB10:1;       /*    MB10      */
+                            unsigned char MB9 :1;       /*    MB9       */
+                            unsigned char MB8 :1;       /*    MB8       */
+                            }       BIT;                /*              */
+                     }          TXCR;                   /*              */
+               union {                                  /* TXACK        */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char MB7 :1;       /*    MB7       */
+                            unsigned char MB6 :1;       /*    MB6       */
+                            unsigned char MB5 :1;       /*    MB5       */
+                            unsigned char MB4 :1;       /*    MB4       */
+                            unsigned char MB3 :1;       /*    MB3       */
+                            unsigned char MB2 :1;       /*    MB2       */
+                            unsigned char MB1 :1;       /*    MB1       */
+                            unsigned char     :1;       /*              */
+                            unsigned char MB15:1;       /*    MB15      */
+                            unsigned char MB14:1;       /*    MB14      */
+                            unsigned char MB13:1;       /*    MB13      */
+                            unsigned char MB12:1;       /*    MB12      */
+                            unsigned char MB11:1;       /*    MB11      */
+                            unsigned char MB10:1;       /*    MB10      */
+                            unsigned char MB9 :1;       /*    MB9       */
+                            unsigned char MB8 :1;       /*    MB8       */
+                            }       BIT;                /*              */
+                     }          TXACK;                  /*              */
+               union {                                  /* ABACK        */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char MB7 :1;       /*    MB7       */
+                            unsigned char MB6 :1;       /*    MB6       */
+                            unsigned char MB5 :1;       /*    MB5       */
+                            unsigned char MB4 :1;       /*    MB4       */
+                            unsigned char MB3 :1;       /*    MB3       */
+                            unsigned char MB2 :1;       /*    MB2       */
+                            unsigned char MB1 :1;       /*    MB1       */
+                            unsigned char     :1;       /*              */
+                            unsigned char MB15:1;       /*    MB15      */
+                            unsigned char MB14:1;       /*    MB14      */
+                            unsigned char MB13:1;       /*    MB13      */
+                            unsigned char MB12:1;       /*    MB12      */
+                            unsigned char MB11:1;       /*    MB11      */
+                            unsigned char MB10:1;       /*    MB10      */
+                            unsigned char MB9 :1;       /*    MB9       */
+                            unsigned char MB8 :1;       /*    MB8       */
+                            }       BIT;                /*              */
+                     }          ABACK;                  /*              */
+               union {                                  /* RXPR         */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char MB7 :1;       /*    MB7       */
+                            unsigned char MB6 :1;       /*    MB6       */
+                            unsigned char MB5 :1;       /*    MB5       */
+                            unsigned char MB4 :1;       /*    MB4       */
+                            unsigned char MB3 :1;       /*    MB3       */
+                            unsigned char MB2 :1;       /*    MB2       */
+                            unsigned char MB1 :1;       /*    MB1       */
+                            unsigned char MB0 :1;       /*    MB0       */
+                            unsigned char MB15:1;       /*    MB15      */
+                            unsigned char MB14:1;       /*    MB14      */
+                            unsigned char MB13:1;       /*    MB13      */
+                            unsigned char MB12:1;       /*    MB12      */
+                            unsigned char MB11:1;       /*    MB11      */
+                            unsigned char MB10:1;       /*    MB10      */
+                            unsigned char MB9 :1;       /*    MB9       */
+                            unsigned char MB8 :1;       /*    MB8       */
+                            }       BIT;                /*              */
+                     }          RXPR;                   /*              */
+               union {                                  /* RFPR         */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char MB7 :1;       /*    MB7       */
+                            unsigned char MB6 :1;       /*    MB6       */
+                            unsigned char MB5 :1;       /*    MB5       */
+                            unsigned char MB4 :1;       /*    MB4       */
+                            unsigned char MB3 :1;       /*    MB3       */
+                            unsigned char MB2 :1;       /*    MB2       */
+                            unsigned char MB1 :1;       /*    MB1       */
+                            unsigned char MB0 :1;       /*    MB0       */
+                            unsigned char MB15:1;       /*    MB15      */
+                            unsigned char MB14:1;       /*    MB14      */
+                            unsigned char MB13:1;       /*    MB13      */
+                            unsigned char MB12:1;       /*    MB12      */
+                            unsigned char MB11:1;       /*    MB11      */
+                            unsigned char MB10:1;       /*    MB10      */
+                            unsigned char MB9 :1;       /*    MB9       */
+                            unsigned char MB8 :1;       /*    MB8       */
+                            }       BIT;                /*              */
+                     }          RFPR;                   /*              */
+               union {                                  /* IRR          */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char OLFIF:1;      /*    OLFIF     */
+                            unsigned char BOFIF:1;      /*    BOFIF     */
+                            unsigned char EPIF :1;      /*    EPIF      */
+                            unsigned char ROWIF:1;      /*    ROWIF     */
+                            unsigned char TOWIF:1;      /*    TOWIF     */
+                            unsigned char RFRIF:1;      /*    RFRIF     */
+                            unsigned char RMIF :1;      /*    RMIF      */
+                            unsigned char RSTIF:1;      /*    RSTIF     */
+                            unsigned char      :3;      /*              */
+                            unsigned char BOIF :1;      /*    BOIF      */
+                            unsigned char      :2;      /*              */
+                            unsigned char URIF :1;      /*    URIF      */
+                            unsigned char MBEIF:1;      /*    MBEIF     */
+                            }       BIT;                /*              */
+                     }          IRR;                    /*              */
+               union {                                  /* MBIMR        */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char MB7 :1;       /*    MB7       */
+                            unsigned char MB6 :1;       /*    MB6       */
+                            unsigned char MB5 :1;       /*    MB5       */
+                            unsigned char MB4 :1;       /*    MB4       */
+                            unsigned char MB3 :1;       /*    MB3       */
+                            unsigned char MB2 :1;       /*    MB2       */
+                            unsigned char MB1 :1;       /*    MB1       */
+                            unsigned char MB0 :1;       /*    MB0       */
+                            unsigned char MB15:1;       /*    MB15      */
+                            unsigned char MB14:1;       /*    MB14      */
+                            unsigned char MB13:1;       /*    MB13      */
+                            unsigned char MB12:1;       /*    MB12      */
+                            unsigned char MB11:1;       /*    MB11      */
+                            unsigned char MB10:1;       /*    MB10      */
+                            unsigned char MB9 :1;       /*    MB9       */
+                            unsigned char MB8 :1;       /*    MB8       */
+                            }       BIT;                /*              */
+                     }          MBIMR;                  /*              */
+               union {                                  /* IMR          */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char OLFIM:1;      /*    OLFIM     */
+                            unsigned char BOFIM:1;      /*    BOFIM     */
+                            unsigned char EPIM :1;      /*    EPIM      */
+                            unsigned char ROWIM:1;      /*    ROWIM     */
+                            unsigned char TOWIM:1;      /*    TOWIM     */
+                            unsigned char RFRIM:1;      /*    RFRIM     */
+                            unsigned char RMIM :1;      /*    RMIM      */
+                            unsigned char      :1;      /*              */
+                            unsigned char      :3;      /*              */
+                            unsigned char BOIM :1;      /*    BOIM      */
+                            unsigned char      :2;      /*              */
+                            unsigned char URIM :1;      /*    URIM      */
+                            unsigned char MBEIM:1;      /*    MBEIM     */
+                            }       BIT;                /*              */
+                     }          IMR;                    /*              */
+               unsigned char    REC;                    /* REC          */
+               unsigned char    TEC;                    /* TEC          */
+               union {                                  /* UMSR         */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Bit  Access */
+                            unsigned char MB7 :1;       /*    MB7       */
+                            unsigned char MB6 :1;       /*    MB6       */
+                            unsigned char MB5 :1;       /*    MB5       */
+                            unsigned char MB4 :1;       /*    MB4       */
+                            unsigned char MB3 :1;       /*    MB3       */
+                            unsigned char MB2 :1;       /*    MB2       */
+                            unsigned char MB1 :1;       /*    MB1       */
+                            unsigned char MB0 :1;       /*    MB0       */
+                            unsigned char MB15:1;       /*    MB15      */
+                            unsigned char MB14:1;       /*    MB14      */
+                            unsigned char MB13:1;       /*    MB13      */
+                            unsigned char MB12:1;       /*    MB12      */
+                            unsigned char MB11:1;       /*    MB11      */
+                            unsigned char MB10:1;       /*    MB10      */
+                            unsigned char MB9 :1;       /*    MB9       */
+                            unsigned char MB8 :1;       /*    MB8       */
+                            }       BIT;                /*              */
+                     }          UMSR;                   /*              */
+               union {                                  /* LAFML        */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Byte Access */
+                            unsigned char L;            /*    Low       */
+                            unsigned char H;            /*    High      */
+                            }       BYTE;               /*              */
+                     }          LAFML;                  /*              */
+               union {                                  /* LAFMH        */
+                     unsigned short WORD;               /*  Word Access */
+                     struct {                           /*  Byte Access */
+                            unsigned char L;            /*    Low       */
+                            unsigned char H;            /*    High      */
+                            }       BYTE;               /*              */
+                     }          LAFMH;                  /*              */
+               unsigned char    MC[16][8];              /* MC[x][y]     */
+               char             wk[16];                 /*              */
+               unsigned char    MD[16][8];              /* MD[x][y]     */
+};                                                      /*              */
 struct st_hcan2 {                                       /* struct HCAN2 */
                 union {                                 /* MCR          */
                       unsigned short WORD;              /*  Word Access */
@@ -3252,8 +3530,15 @@ struct st_hudi {                                        /* struct H-UDI */
                       }         SDSR;                   /*              */
                unsigned int     SDDR;                   /* SDDR         */
 };                                                      /*              */
-#define HCAN0  (*(volatile struct st_hcan2 *)0xFFFFD000)/* HCAN0 Address*/
-#define HCAN1  (*(volatile struct st_hcan2 *)0xFFFFD800)/* HCAN1 Address*/
+#ifdef SH7055
+    #ifdef VER_180
+        #define HCAN0 (*(volatile struct st_hcan *)0xFFFFE400) /* HCAN0 Address*/
+        #define HCAN1 (*(volatile struct st_hcan *)0xFFFFE600) /* HCAN1 Address*/
+    #endif
+#else
+    #define HCAN0  (*(volatile struct st_hcan2 *)0xFFFFD000)/* HCAN0 Address*/
+    #define HCAN1  (*(volatile struct st_hcan2 *)0xFFFFD800)/* HCAN1 Address*/
+#endif
 #define FLASH  (*(volatile struct st_flash *)0xFFFFE800)/* FLASH Address*/
 #define UBC    (*(volatile struct st_ubc   *)0xFFFFEC00)/* UBC   Address*/
 #define WDT    (*(volatile union  un_wdt   *)0xFFFFEC10)/* WDT   Address*/
